@@ -202,11 +202,14 @@ export class KubernetesSessionWorkload implements BackendWorkload {
     return `${APPS_STATE_DIR}/${app}`;
   }
 
+  /** The kernel's debug stream binds the pod's loopback, reached through the
+   *  app's own supervisor slot, so nothing else on the network reaches it. */
   async addresses(app: string): Promise<AppAddresses> {
     const rt = this.requireRuntime();
     const port = inspectPortFor(this.slotOf(app));
+    const supervisor = this.supervisorOf(app);
     return {
-      inspect: { listen: `0.0.0.0:${port}`, url: `http://${rt.ip}:${port}/events` },
+      inspect: { listen: `127.0.0.1:${port}`, connect: (signal) => supervisor.openPortForward(port, signal) },
       host: rt.ip,
     };
   }

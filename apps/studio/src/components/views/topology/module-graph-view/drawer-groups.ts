@@ -5,7 +5,7 @@ import { isImportedInstance, type OffCanvas } from "./off-canvas";
  * What the drawer lists: everything the module has that is not one of its own
  * boxes.
  *
- * Four groups, and the split is by WHY a thing is not a box rather than by what
+ * Groups, and the split is by WHY a thing is not a box rather than by what
  * it is. **Providers** and **types** are off the canvas because nothing draws a
  * line to them — a hold collapses to the name in its holder's picker, and a
  * `shape` slot names a type with no runtime relation at all (see
@@ -17,8 +17,9 @@ import { isImportedInstance, type OffCanvas } from "./off-canvas";
  * All four have LEFT the canvas, and selecting any of them rings what reaches
  * it — the ring is what stands in for the line.
  *
- * **A module's own kinds are listed only when the drawer IS the canvas.** The
- * group is imported kinds by declaration; a module that declares kinds and no
+ * **Imported kinds and instances are filed under the import's alias**, never
+ * mixed with this module's own groups. **A module's own kinds are listed only
+ * when the drawer IS the canvas.** A module that declares kinds and no
  * instances has no other surface at all, so its own are listed there rather than
  * leaving it a blank panel.
  */
@@ -27,10 +28,18 @@ export interface DrawerGroups {
   providers: GraphNode[];
   /** Named shapes: no runtime instance, so no box either. */
   types: GraphNode[];
-  /** Kind declarations reached across an import — plus this module's own when
-   *  there is no canvas to put anything else on. */
+  /** This module's own kinds — listed only when there is no canvas to put
+   *  anything else on. */
   kinds: GraphKind[];
-  /** Instances declared in another module and reached from here. */
+  /** What each imported module contributes — its kinds and the instances it
+   *  declared that this module reaches — filed under the import's alias. */
+  imports: ImportGroup[];
+}
+
+export interface ImportGroup {
+  /** The alias this module writes the import with. */
+  alias: string;
+  kinds: GraphKind[];
   resources: GraphNode[];
 }
 
@@ -41,14 +50,58 @@ export interface DrawerGroupsInput {
   sole: boolean;
 }
 
+/** The alias each declaring module is imported under, read off the instances
+ *  the graph already stamps with one. */
+function aliasesByModule(graph: ModuleGraph): Map<string, string> {
+  const aliases = new Map<string, string>();
+  for (const node of graph.nodes) {
+    if (node.external && node.module && node.alias) aliases.set(node.module, node.alias);
+  }
+  return aliases;
+}
+
+const moduleOfKind = (kind: GraphKind): string => {
+  if (kind.module) return kind.module;
+  const dot = kind.id.lastIndexOf(".");
+  return dot > 0 ? kind.id.slice(0, dot) : kind.id;
+};
+
 export function drawerGroups({ graph, offCanvas, sole }: DrawerGroupsInput): DrawerGroups {
   const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
+  const aliases = aliasesByModule(graph);
+  const groups = new Map<string, ImportGroup>();
+  const groupFor = (module: string | undefined): ImportGroup => {
+    const key = module ?? "";
+    let group = groups.get(key);
+    if (!group) {
+      group = { alias: (module && aliases.get(module)) || module || "imports", kinds: [], resources: [] };
+      groups.set(key, group);
+    }
+    return group;
+  };
+  for (const kind of graph.kinds) if (!kind.own) groupFor(moduleOfKind(kind)).kinds.push(kind);
+  for (const node of [...offCanvas.imported].sort(byName)) groupFor(node.module).resources.push(node);
   return {
     providers: [...offCanvas.providers].sort(byName),
     types: [...offCanvas.types].sort(byName),
-    kinds: graph.kinds.filter((kind) => !kind.own || sole),
-    resources: [...offCanvas.imported].sort(byName),
+    kinds: sole ? graph.kinds.filter((kind) => kind.own) : [],
+    imports: [...groups.values()].sort((a, b) => a.alias.localeCompare(b.alias)),
   };
+}
+
+/**
+ * A kind as THIS module would write it. An instance a library declares carries
+ * the library's own spelling (`Self.WriteLine`); an importer writes it through
+ * the alias it imported the library under.
+ */
+export function kindAsWritten(graph: ModuleGraph, node: GraphNode): string {
+  if (node.unknownKind || !node.external) return node.kind;
+  const canonical = node.canonicalKind ?? node.kind;
+  const dot = canonical.lastIndexOf(".");
+  if (dot <= 0) return canonical;
+  const module = canonical.slice(0, dot);
+  const alias = node.alias ?? aliasesByModule(graph).get(module) ?? module;
+  return `${alias}.${canonical.slice(dot + 1)}`;
 }
 
 /**
@@ -86,13 +139,16 @@ export function isEmpty(groups: DrawerGroups): boolean {
     groups.providers.length === 0 &&
     groups.types.length === 0 &&
     groups.kinds.length === 0 &&
-    groups.resources.length === 0
+    groups.imports.length === 0
   );
 }
 
 /** How many rows the drawer holds, for the count on its closed handle. */
 export function groupTotal(groups: DrawerGroups): number {
   return (
-    groups.providers.length + groups.types.length + groups.kinds.length + groups.resources.length
+    groups.providers.length +
+    groups.types.length +
+    groups.kinds.length +
+    groups.imports.reduce((sum, group) => sum + group.kinds.length + group.resources.length, 0)
   );
 }

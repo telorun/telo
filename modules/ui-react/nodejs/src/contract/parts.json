@@ -72,7 +72,7 @@
       "picker-empty"
     ],
     "date-range": ["date-range", "date-range-presets", "date-range-preset", "date-range-from", "date-range-to"],
-    "action": ["action", "action-result", "action-failure", "row-answer", "row-failure", "disabled-text"],
+    "mutation": ["mutation-result", "mutation-failure", "disabled-text", "saving", "retry"],
     "filters": [
       "filters", "filters-bar", "filters-content", "filters-toggle", "filters-count", "filters-add",
       "filters-apply", "filters-reset", "filters-presets", "filters-preset", "filters-summary", "summary-chip",
@@ -89,7 +89,7 @@
     "status": ["component", "error", "error-code", "error-message", "loading"]
   },
   "states": {
-    "data-state": { "values": ["idle", "loading", "error", "empty", "submitting"], "on": ["page", "query", "listing", "form", "filters", "component", "action", "row-action", "button", "markdown", "chat"] },
+    "data-state": { "values": ["idle", "loading", "error", "empty", "submitting"], "on": ["page", "query", "listing", "form", "filters", "component", "row-action", "button", "markdown", "chat"] },
     "data-actions": { "values": ["inside", "outside"], "on": ["chat-composer"] },
     "data-role": { "values": ["user", "assistant"], "on": ["chat-message"] },
     "data-status": {
@@ -113,7 +113,7 @@
       "values": ["true"],
       "on": [
         "app", "main", "page", "box", "stack", "columns", "text", "badge", "link", "image", "svg", "value", "time", "list", "bar",
-        "command", "button", "query", "listing", "form", "action", "filters", "component", "chat", "split", "aside", "split-content",
+        "command", "button", "query", "listing", "form", "filters", "component", "chat", "split", "aside", "split-content",
         "markdown", "navigation", "tabs", "tab-panel"
       ]
     },

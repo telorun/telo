@@ -11,6 +11,7 @@ pub mod bearer_token;
 pub mod connection;
 pub mod launcher;
 pub mod output_ring;
+pub mod port_forward;
 pub mod protocol;
 pub mod run_process;
 pub mod serve;

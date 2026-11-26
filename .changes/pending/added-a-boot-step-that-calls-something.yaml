@@ -1,0 +1,5 @@
+units:
+  apps/studio: Added
+body: "A boot step that calls something can now be added: the Boot + offers Call beside
+  Start, listing every resource and imported ready-made instance a step can invoke, and
+  opens the new step's arguments form."

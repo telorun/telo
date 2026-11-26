@@ -135,6 +135,23 @@ decides what changes.
 | `Navigation` | `onOpenChange` → `open`, `onChange` |
 | `Tabs` | `onChange` → `value` |
 
+## Settling entered values
+
+Where entered values drive something — a filter bar's list, a form's record and
+the queries and listings that follow it, a picker's search — the renderer applies
+one rule, stated here once. A value **settles** when:
+
+- it is a **choice** (a pick from `Select`, `OptionGroup`, `Checkbox`, `Switch`,
+  a date from a picker) or a **commit** (`onCommit`: Enter, leaving a text box,
+  letting go of a slider): at once;
+- it is **typed text**: after the typing pause — 300 milliseconds — with no other
+  change. Each typed change starts the pause again, and a settle ends whatever
+  pause was waiting.
+
+A control only reports `onChange` and `onCommit`; the renderer owns the pause.
+`conformance/form-writes.json` in `ui` pins the rule (its `settle` rows), which
+a filter bar under `apply: typing` and a form's settled record both follow.
+
 ## Overlays and anchored controls
 
 An overlay — `Dialog`, `Drawer`, `Popover`, `Confirmation` — is given the

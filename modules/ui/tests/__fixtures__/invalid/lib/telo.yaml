@@ -10,14 +10,14 @@ metadata:
     Test fixture exporting listings, a form and filter bars that each name a
     property, an operator, a facet, a starting sort or an option source their data model or
     their collection does not support, surfaces and split views whose compact surface is addressed or has a
-    compact surface of its own, a form and actions whose fields their model
+    compact surface of its own, a form and submit forms whose fields their model
     cannot answer for or no control can enter, filter values relative to now
-    on a property that holds no date or under `in`, an action clearing its answer on
-    a property its input model does not declare, and a listing and a list whose
+    on a property that holds no date or under `in`, a form clearing its answers on
+    a property its model does not declare, and a listing and a list whose
     row action is given inputs that make no record of its input model.
 imports: { Ui: ../../../../, DataModel: ../../../../../data-model }
 exports:
-  resources: [sourceFilter, sourceFilterNotAccepted, sortNotAccepted, formField, formFieldUnsupported, filterNotAccepted, filterValuesNotFaceted, filterOptionValueMismatch, compactAddressed, compactNested, splitCompactAddressed, splitCompactNested, filterDuplicate, filterDefaultInvalid, filterControlUnsupported, presetUnknownFilter, searchUndeclared, presetSearchUnset, presetValueInvalid, presetRelativeInvalid, defaultRelativeInvalid, presetLabelDuplicate, toggleOverText, toggleUntyped, toggleDefaultOff, togglePresetOff, actionFieldUnknown, actionFieldUnsupported, actionRequiredNotEntered, actionRequiredNotEnterable, actionClearUnknown, rowActionInputs, listRowActionInputs]
+  resources: [sourceFilter, sourceFilterNotAccepted, sortNotAccepted, formField, formFieldUnsupported, filterNotAccepted, filterValuesNotFaceted, filterOptionValueMismatch, compactAddressed, compactNested, splitCompactAddressed, splitCompactNested, filterDuplicate, filterDefaultInvalid, filterControlUnsupported, presetUnknownFilter, searchUndeclared, presetSearchUnset, presetValueInvalid, presetRelativeInvalid, defaultRelativeInvalid, presetLabelDuplicate, toggleOverText, toggleUntyped, toggleDefaultOff, togglePresetOff, submitFieldUnknown, submitFieldUnsupported, submitRequiredNotEntered, submitRequiredNotEnterable, submitClearUnknown, rowActionInputs, listRowActionInputs]
 ---
 kind: Telo.JsonSchema
 metadata: { name: Todo }
@@ -353,35 +353,43 @@ model:
 record: { presentation: !ref todos }
 fields: [tags]
 ---
-kind: Ui.Action
-metadata: { name: actionFieldUnknown }
-inputModel: !ref Report
-request: { target: /api/reports }
-label: Generate
+kind: Ui.Form
+metadata: { name: submitFieldUnknown }
+model: !ref Report
+onSubmit:
+  mutation: { kind: Ui.Mutation, inputModel: { kind: Telo.JsonSchema, schema: { type: object, properties: {} } }, url: /api/reports }
+  inputs: {}
+  label: Generate
 fields: [month, year]
 ---
-kind: Ui.Action
-metadata: { name: actionFieldUnsupported }
-inputModel: !ref Report
-request: { target: /api/reports }
-label: Generate
+kind: Ui.Form
+metadata: { name: submitFieldUnsupported }
+model: !ref Report
+onSubmit:
+  mutation: { kind: Ui.Mutation, inputModel: { kind: Telo.JsonSchema, schema: { type: object, properties: {} } }, url: /api/reports }
+  inputs: {}
+  label: Generate
 fields: [month, options, pages]
 ---
-kind: Ui.Action
-metadata: { name: actionRequiredNotEntered }
-inputModel: !ref Report
-request: { target: /api/reports }
-label: Generate
+kind: Ui.Form
+metadata: { name: submitRequiredNotEntered }
+model: !ref Report
+onSubmit:
+  mutation: { kind: Ui.Mutation, inputModel: { kind: Telo.JsonSchema, schema: { type: object, properties: {} } }, url: /api/reports }
+  inputs: {}
+  label: Generate
 fields: []
 ---
 # No `fields`: the default set holds no field for the required `options`.
-kind: Ui.Action
-metadata: { name: actionRequiredNotEnterable }
-inputModel:
+kind: Ui.Form
+metadata: { name: submitRequiredNotEnterable }
+model:
   kind: Telo.JsonSchema
   schema: { type: object, required: [options], properties: { options: { type: object } } }
-request: { target: /api/reports }
-label: Generate
+onSubmit:
+  mutation: { kind: Ui.Mutation, inputModel: { kind: Telo.JsonSchema, schema: { type: object, properties: {} } }, url: /api/reports }
+  inputs: {}
+  label: Generate
 ---
 kind: Telo.JsonSchema
 metadata: { name: Removal }
@@ -391,17 +399,18 @@ schema:
   required: [count]
   properties: { count: { type: integer }, note: { type: string } }
 ---
-kind: Ui.Action
+kind: Ui.Mutation
 metadata: { name: remove }
 inputModel: !ref Removal
-request: { target: /api/todos/remove }
-label: Remove
+url: /api/todos/remove
 ---
-kind: Ui.Action
-metadata: { name: actionClearUnknown }
-inputModel: !ref Removal
-request: { target: /api/todos/remove }
-label: Remove
+kind: Ui.Form
+metadata: { name: submitClearUnknown }
+model: !ref Removal
+onSubmit:
+  mutation: !ref remove
+  inputs: { count: !cel "values.count" }
+  label: Remove
 clearAnswerOn: [count, total]
 ---
 # A key the closed model does not declare, a value its property refuses, and
@@ -411,8 +420,9 @@ metadata: { name: rowActionInputs }
 model: !ref Todo
 presentation: !ref todos
 rowActions:
-  - action: !ref remove
+  - mutation: !ref remove
     inputs: { total: !cel "row.count", note: 5 }
+    label: Remove
 ---
 # The same inputs, given by a row of a list a reader draws.
 kind: Ui.View
@@ -433,5 +443,6 @@ content:
       rows: !cel "data.todos"
       columns: [{ value: !cel "row.text" }]
       rowActions:
-        - action: !ref remove
+        - mutation: !ref remove
           inputs: { total: !cel "row.count", note: 5 }
+          label: Remove

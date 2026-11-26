@@ -1,5 +1,6 @@
 import type { DirectoryEntryKind } from "@telorun/editor-protocol";
 import type { AstDocument, LoadedFile, Range } from "@telorun/analyzer";
+import { DEFAULT_RUNNER } from "./run/adapters/http-runner/default-runner";
 import type { WorkspaceDiagnostics } from "./language/engine-diagnostics";
 
 /** A user-configured runner: an instance of an adapter *type* (`adapterId`)
@@ -71,9 +72,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   runners: [
     {
       id: TELO_CLOUD_RUNNER_ID,
-      name: "Telo Cloud",
+      name: DEFAULT_RUNNER.name,
       adapterId: "http-runner",
-      config: { baseUrl: "https://runner.telo.run" },
+      config: { baseUrl: DEFAULT_RUNNER.baseUrl },
     },
   ],
   activeRunnerId: TELO_CLOUD_RUNNER_ID,

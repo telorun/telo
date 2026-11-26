@@ -105,13 +105,14 @@ export async function fetchStarterCatalog(baseUrl: string): Promise<StarterCatal
 
 /** Fetches a starter's full file set and maps every file to a path relative to
  *  the starter's own folder, with the root manifest's `metadata.name` rewritten
- *  to `name`. Reuses `buildRemoteImportPlan` (same-origin relative cascade +
+ *  to `name` and its `metadata.title` set to `title` when one is given. Reuses `buildRemoteImportPlan` (same-origin relative cascade +
  *  listed `files:` assets); a file resolving outside the starter folder is an
  *  unsupported layout and throws. */
 export async function fetchStarterFiles(
   manifestUrl: string,
   name: string,
   registryAdapters: ManifestSource[],
+  title?: string,
 ): Promise<StarterFile[]> {
   const scratch = createVirtualWorkspaceAdapter();
   const plan = await buildRemoteImportPlan(manifestUrl, scratch, registryAdapters);
@@ -126,16 +127,17 @@ export async function fetchStarterFiles(
       );
     }
     const relPath = file.destPath.slice(prefix.length);
-    const text = file.isRoot ? rewriteMetadataName(plan.rootDestPath, file.text, name) : file.text;
+    const text = file.isRoot ? rewriteMetadataName(plan.rootDestPath, file.text, name, title) : file.text;
     files.push({ relPath, text, isRoot: file.isRoot });
   }
   return files;
 }
 
-/** Rewrites the root Application/Library document's `metadata.name` in place,
- *  preserving formatting and `!cel`/`!ref` tags via the AST edit path. Returns
- *  the text unchanged when no Application/Library doc is present. */
-export function rewriteMetadataName(filePath: string, text: string, name: string): string {
+/** Rewrites the root Application/Library document's `metadata.name` (and sets
+ *  `metadata.title` when one is given) in place, preserving formatting and
+ *  `!cel`/`!ref` tags via the AST edit path. Returns the text unchanged when no
+ *  Application/Library doc is present. */
+export function rewriteMetadataName(filePath: string, text: string, name: string, title?: string): string {
   const modDoc = parseModuleDocument(filePath, text);
   const docs = modDoc.loaded.documents;
   const index = docs.findIndex((doc) => {
@@ -143,6 +145,10 @@ export function rewriteMetadataName(filePath: string, text: string, name: string
     return json?.kind === "Telo.Application" || json?.kind === "Telo.Library";
   });
   if (index < 0) return text;
-  const updated = applyEdit(docs, index, { op: "set", pointer: "/metadata/name", value: name });
+  const named = applyEdit(docs, index, { op: "set", pointer: "/metadata/name", value: name });
+  const updated =
+    title === undefined
+      ? named
+      : applyEdit(named, index, { op: "set", pointer: "/metadata/title", value: title });
   return serializeModuleDocument(updated);
 }

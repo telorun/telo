@@ -1,6 +1,7 @@
-//! One runner connection: the upgrade, the bearer check, the `hello` exchange,
-//! then control messages and stdin in, everything the supervisor sends out. No
-//! Node twin — the crate runs where no runtime is (see the crate README).
+//! One runner connection: the upgrade, the bearer check, then either a port
+//! forward or the `hello` exchange, control messages and stdin in and everything
+//! the supervisor sends out. No Node twin — the crate runs where no runtime is
+//! (see the crate README).
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -18,7 +19,10 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
 
 use crate::bearer_token::{self, Credential};
-use crate::protocol::{close_code, parse_runner_message, RunnerMessage, PATH};
+use crate::port_forward::serve_port_forward;
+use crate::protocol::{
+    close_code, parse_port_forward_query, parse_runner_message, RunnerMessage, PATH, PORT_FORWARD_PATH,
+};
 use crate::supervisor::{ConnectionClose, ConnectionHandles, Outgoing, Supervisor};
 use crate::supervisor_log;
 
@@ -27,14 +31,27 @@ pub const HELLO_WINDOW: Duration = Duration::from_secs(10);
 
 type Socket = WebSocketStream<TcpStream>;
 
+enum Route {
+    Supervisor,
+    /// The request's query, judged once the bearer token is.
+    PortForward(Option<String>),
+}
+
 pub async fn serve_connection(supervisor: Arc<Supervisor>, stream: TcpStream, token: Arc<[u8]>, id: u64) {
     let mut authorization: Option<Vec<u8>> = None;
+    let mut route = Route::Supervisor;
     let inspect = |request: &Request, response: Response| -> Result<Response, ErrorResponse> {
-        if request.uri().path() != PATH {
-            let mut refusal = ErrorResponse::new(Some(format!("no route; the supervisor serves {PATH}\n")));
-            *refusal.status_mut() = StatusCode::NOT_FOUND;
-            return Err(refusal);
-        }
+        route = match request.uri().path() {
+            PATH => Route::Supervisor,
+            PORT_FORWARD_PATH => Route::PortForward(request.uri().query().map(str::to_string)),
+            _ => {
+                let mut refusal = ErrorResponse::new(Some(format!(
+                    "no route; the supervisor serves {PATH} and {PORT_FORWARD_PATH}\n"
+                )));
+                *refusal.status_mut() = StatusCode::NOT_FOUND;
+                return Err(refusal);
+            }
+        };
         authorization = request.headers().get(header::AUTHORIZATION).map(|value| value.as_bytes().to_vec());
         Ok(response)
     };
@@ -55,6 +72,15 @@ pub async fn serve_connection(supervisor: Arc<Supervisor>, stream: TcpStream, to
             supervisor_log::warn(&format!("connection {id} carried a wrong token"));
             return close(socket, close_code::TOKEN_INVALID, "the bearer token is not this supervisor's").await;
         }
+    }
+    if let Route::PortForward(query) = route {
+        return match parse_port_forward_query(query.as_deref()) {
+            Ok(port) => serve_port_forward(socket, port, id).await,
+            Err(error) => {
+                supervisor_log::warn(&format!("port forward {id}: {error}"));
+                close(socket, close_code::PROTOCOL_ERROR, &error.message).await
+            }
+        };
     }
     let (mut sink, mut source) = socket.split();
     let last_seq = match tokio::time::timeout(HELLO_WINDOW, source.next()).await {
@@ -183,7 +209,7 @@ async fn write(
 }
 
 /// A close reason is at most 123 bytes; a longer one is cut at a char boundary.
-fn close_frame(code: u16, reason: &str) -> Message {
+pub(crate) fn close_frame(code: u16, reason: &str) -> Message {
     let mut end = reason.len().min(123);
     while !reason.is_char_boundary(end) {
         end -= 1;

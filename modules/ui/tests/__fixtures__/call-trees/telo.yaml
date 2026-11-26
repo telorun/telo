@@ -1,0 +1,45 @@
+# Calls that are written well: a button under a query node whose failure tree
+# reads the enclosing query's parameters, and a row action asking for a note.
+kind: Telo.Library
+metadata:
+  name: UiCallTrees
+  version: 1.0.0
+  description: >-
+    Test fixture: calls whose trees read the roots of the place that holds
+    them, and a prompt their inputs read.
+imports: { Ui: ../../../, DataModel: ../../../../data-model }
+---
+kind: Telo.JsonSchema
+metadata: { name: Todo }
+schema:
+  type: object
+  required: [id]
+  properties: { id: { type: integer }, name: { type: string } }
+---
+kind: Ui.Mutation
+metadata: { name: archive }
+inputModel:
+  kind: Telo.JsonSchema
+  schema: { type: object, additionalProperties: false, required: [id], properties: { id: { type: integer } } }
+outputModel:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [receipt], properties: { receipt: { type: string } } }
+url: /api/todos/archive
+---
+kind: Ui.View
+metadata: { name: buttonUnderQuery }
+content:
+  type: query
+  query:
+    kind: Ui.Query
+    model: !ref Todo
+    url: /api/todo
+    query: { status: { type: string } }
+  content:
+    - type: button
+      action:
+        mutation: !ref archive
+        inputs: { id: !cel "data.id" }
+        label: Archive
+        result: { type: value, value: !cel "result.receipt" }
+        failure: { type: value, value: !cel "query.status" }

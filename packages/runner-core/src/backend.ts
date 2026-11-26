@@ -1,3 +1,5 @@
+import type { Duplex } from "node:stream";
+
 import type { RunnerAgent } from "./config.js";
 import type {
   AppState,
@@ -190,12 +192,20 @@ export interface WorkloadCallbacks {
   ): void;
 }
 
+/** An app's `--inspect` endpoint, bound to loopback inside the workload. */
+export interface InspectEndpoint {
+  /** The address core passes to `telo run --inspect` (`127.0.0.1:9231`). */
+  listen: string;
+  /** Opens a byte stream to `listen` as the workload sees it — a supervisor
+   *  port forward, or a plain socket where the runner shares the host. Core
+   *  speaks the debug event stream's HTTP over it, retrying a stream that
+   *  fails or ends until the run does. */
+  connect(signal: AbortSignal): Promise<Duplex>;
+}
+
 /** Where core reaches one app's slot. */
 export interface AppAddresses {
-  /** The app's `--inspect` endpoint: `listen` is the address core passes to
-   *  `telo run --inspect` (`0.0.0.0:9231`), `url` the debug event stream core
-   *  relays from (`http://10.0.0.7:9231/events`). Reachable only by the runner. */
-  inspect: { listen: string; url: string };
+  inspect: InspectEndpoint;
   /** The host core dials the app's declared tcp ports at for reachability. */
   host: string;
 }

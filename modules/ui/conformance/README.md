@@ -2,7 +2,7 @@
 
 Data files a renderer's tests read, so every renderer answers what `ui`
 answers. Each is one JSON object, `{ description, rows }`, every row carrying a
-`name` and the case's inputs and expected outcome. All nine ship with the
+`name` and the case's inputs and expected outcome. All ten ship with the
 module through `files:`.
 
 | File | Pins |
@@ -12,10 +12,11 @@ module through `files:`.
 | `listing-reads.json` | the exact requests a listing's read plan sends |
 | `addresses.json` | the text an address or request target resolves to, or the parameter it is unresolved for |
 | `current-location.json` | whether a link to an address is marked as the current location |
-| `refreshes.json` | which readers a refresh entry, with its `*` / `**` segments, reads again |
+| `invalidations.json` | which readers an invalidation entry, with its `*` / `**` segments, reads again |
 | `filter-tokens.json` | how text typed into a search-box filter bar becomes the bar's values |
 | `template-bindings.json` | the body a query's `input.body` template resolves to from the roots it reads |
 | `merge-patch.json` | the merge patch an edit form sends, and the `If-Match` a write carries |
+| `form-writes.json` | when entered values settle, what a form's `form` root holds, and when its `autosave` sends |
 
 ## `listing-reads.json`
 
@@ -83,9 +84,9 @@ key's values compared as an ordered list, an absent key absent. An `https:`,
 not write unmarks the link. Only a renderer draws links, so only renderers read
 this file.
 
-## `refreshes.json`
+## `invalidations.json`
 
-One row is a `refreshes` entry in the wire form (`address`, with `roots` for
+One row is an `invalidates` entry in the wire form (`address`, with `roots` for
 its chains), the encoded app-relative `path` a reader is keyed by, and whether
 it `match`es, so the reader reads again. A pattern is matched segment by
 segment against the resolved, encoded path with its query left out: a `*`
@@ -175,3 +176,58 @@ request path, its query left out. The rules the rows pin:
 
 A renderer applies a 412 as the page's own failure, announcing the path as
 changed so its readers read again; that is exercised by the renderer's own tests.
+
+## `form-writes.json`
+
+Three kinds of row, told apart by `kind`, each a sequence of `steps`: a step
+says what happened and what is expected right after it.
+
+A `settle` row is the settle rule over `pause` milliseconds. A step is a
+`change` (`choice` or `typed`), a `commit` (Enter, leaving a field, releasing a
+slider) or an `elapse` of milliseconds, and `settled` counts the settles so far.
+A choice or a commit settles at once, typed text once `pause` passes with no
+other change; each typed change starts the pause again, and a settle ends
+whatever pause was waiting.
+
+A `form` row is what a form's `form` root holds over its `schema` (the form's
+`model`). A step is a `settle` of a record, a `start` at an address (where its
+`initialValues` are read) or an `unplace` (the form's last placement on the page
+leaves it); `holds` is the record `form` reads, `null` for none, and `placed`
+whether the form is on the page. A settled record the schema refuses keeps the
+last valid one; before the first valid one `form` holds nothing; a start at
+another address than the one before discards the record.
+
+An `autosave` row is one form's `autosave` over its mutation's input model
+`schema`, starting from the bound record `start`, with `debounce` milliseconds.
+A step is a `change` of the bound record (`how`: `choice` or `typed`), an
+`elapse`, a `commit`, a `hide` (the page became hidden), a `retry` (the retry
+button), a `discard` (the unsaved question answered by leaving) or an `answer`
+to the oldest write in flight (`acknowledged` or `failed`). In a row marked
+`queued` a write waits in its mutation's queue until a `begin` step starts it
+— a `serial` mutation's turn coming — and takes its record then; elsewhere a
+write starts as it is sent. `sent` lists the records sent during the step (none
+when absent); `state` is the form's
+`data-state` for its writes and `unsaved` whether they leave it unsaved, each
+checked where given. The rules the rows pin:
+
+- A record is sent when it is valid against the schema and, while a write is
+  pending (in flight or waiting in its queue), differs from that pending record;
+  with none pending, it differs from the baseline. The baseline is the newest
+  record acknowledged — `start` at first — and a failure clears it. So a change
+  back to the baseline while a write is pending is held (or replaces the queued
+  record) and sent when that write answers.
+- A choice sends at once, typed text after `debounce`, and a commit or a hidden
+  page sends what waits.
+- A write waiting in its queue to start takes every change made meanwhile, so
+  it goes once, with the newest record.
+- A change made while a write is in flight is held, the newest replacing older,
+  and sent when the write answers, whether it succeeded or failed; a change to
+  a record that cannot be sent drops what was held. No write is aborted or
+  reordered, and nothing is sent again but by a change or `retry`.
+- `state` is `submitting` while a write is in flight or held, `error` after a
+  failure until the next change or retry, else `idle`. `unsaved` holds while
+  the record differs from the baseline, a write waits, is in flight or held, or
+  the last write failed with none acknowledged since.
+
+A renderer applies the rows with its own timers; the requests a write makes are
+the mutation contract's, exercised by the renderer's own tests.

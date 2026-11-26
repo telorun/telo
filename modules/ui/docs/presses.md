@@ -3,7 +3,7 @@
 What happens when something is pressed is written once, in one vocabulary: a
 **destination**, held by the key `to`. The same destination goes to the same
 place from a link, a menu item, a column, a related record's label, a
-navigation entry, an action's success and a pressed region — a card, a
+navigation entry, a call's success and a pressed region — a card, a
 listing's record, a group of nodes.
 
 ```yaml
@@ -18,7 +18,8 @@ listing's record, a group of nodes.
 ## Destinations
 
 A destination is a `Ui.Destination` — an abstract whose kinds provide where a
-press goes. `ui` has two:
+press goes, and which extends `Ui.Effect`, so a destination is also an
+[effect](#effects). `ui` has two:
 
 | Kind | Goes |
 | --- | --- |
@@ -55,6 +56,16 @@ is `UI_PAGE_UNROUTED`, as a link to it would be. How a page opens in a surface
 — one opened page at a time, an omitted `surface` keeping the one it is pressed
 in — is in [surfaces](surfaces.md#a-page-opened-in-a-surface).
 
+## Effects
+
+What follows a successful write is a list of `Ui.Effect`s: the `onSuccess` of a
+[call](mutation.md#after-a-success) and of a [form](form.md#onsuccess). `Ui.Effect`
+is an abstract, so an effect kind another module adds is accepted with no change
+to the call; anything that is not an effect there is `REFERENCE_KIND_MISMATCH`.
+Today the effects are the destinations, `Ui.Navigate` and `Ui.OpenPage`. They run
+in the order written, each after the one before has happened, and are run by the
+page shell, so they run even after the component that made the call has closed.
+
 ## The `to` key
 
 `to` holds a destination declared in place: a `{ kind, … }` of a
@@ -71,7 +82,7 @@ unknown kind is.
 | a [relation](collection-presentation.md#relations) | `row`, the related record |
 | an [option source](field-kinds.md#option-sources) | `row`, the option's record |
 | a [navigation](navigation.md#entries--uinavigationitem) `link` entry | nothing: every value is fixed |
-| an action's [`onSuccess`](action.md#after-a-success) | `result` and `input` |
+| a call's or form's [`onSuccess`](mutation.md#after-a-success), as an [effect](#effects) | `result` and `input`; a form's, `values` and `result` |
 | a [press](#presses) on a `box`, `stack` or `columns` node | the roots of the tree it is in |
 | a [`Ui.Listing`'s press](listing.md#pressing-a-record), `edit` | `row`, `query` and `params` |
 | a [`Ui.Listing`'s `create`](listing.md#create-and-edit) | `values`, `query` and `params` |
@@ -102,10 +113,10 @@ named by that text. A region holding several things — a `box`, `stack` or
 the `label` naming the press. A pressed `badge`, `image`, `svg` or `time` is a
 `box` with `press` around it, and a pressed text is a `link`.
 
-Running an action is never a destination: it stays a
-[`button` node](nodes.md#buttons), a row action or another bound action, whose
-answer and failure are drawn at its button — a pressed card, a success or a
-link has no such place.
+Running a mutation is never a destination: it stays a
+[`button` node](nodes.md#buttons), a row action or another
+[call](mutation.md#calls), whose answer and failure are drawn at its button — a
+pressed card, a success or a link has no such place.
 
 ## Presses
 

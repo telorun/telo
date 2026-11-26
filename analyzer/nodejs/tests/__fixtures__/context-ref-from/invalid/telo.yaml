@@ -1,0 +1,49 @@
+# Paths the holder's schema cannot follow, malformed values, and the withheld
+# mark beside both typing annotations; beside the path alone, with the keywords
+# of its own reading, it is legal.
+kind: Telo.Library
+metadata: { name: RefFromInvalid }
+exports: { kinds: [Target, Bad] }
+---
+kind: Telo.Definition
+metadata: { name: Target }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  properties: { answer: { x-telo-ref: { kind: Telo.Type, use: schema } } }
+---
+kind: Telo.Definition
+metadata: { name: Bad }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  properties:
+    onSubmit:
+      type: object
+      properties:
+        target: { x-telo-ref: { kind: Self.Target, use: dependency } }
+        label: { type: string }
+    effects:
+      type: string
+      x-telo-eval: accessor
+      x-telo-context:
+        type: object
+        properties:
+          misspelt: { x-telo-context-ref-from: onSubmt/target/answer }
+          data: { x-telo-context-ref-from: onSubmit/label }
+          endsAtSlot: { x-telo-context-ref-from: onSubmit/target }
+          empty: { x-telo-context-ref-from: [] }
+          number: { x-telo-context-ref-from: 3 }
+          gap: { x-telo-context-ref-from: "onSubmit//answer" }
+          both:
+            x-telo-context-from-referrer: row
+            x-telo-context-ref-from: onSubmit/target/answer
+            x-telo-context-withheld: typed two ways.
+          # Legal.
+          own:
+            x-telo-context-ref-from: onSubmit/target/answer
+            x-telo-context-withheld: the form names no target.
+            type: object
+            additionalProperties: false

@@ -110,13 +110,16 @@ function withinApplication(context: DestinationContext): string | undefined {
 /**
  * Follow an address: a move of the application to a page it declares — from
  * inside an opened page too, which that closes — else a load of the address.
- * One no link may hold goes nowhere.
+ * One no link may hold goes nowhere. Resolves with whether it went: a move the
+ * user chose to stay for did not.
  */
-export function followAddress(context: DestinationContext): void {
+export function followAddress(context: DestinationContext): Promise<boolean> {
   const within = withinApplication(context);
   if (within !== undefined) return context.store.follow(within);
   const href = linkAddress(context.store, context.address);
-  if (href !== undefined) context.store.leave(href);
+  if (href === undefined) return Promise.resolve(false);
+  context.store.leave(href);
+  return Promise.resolve(true);
 }
 
 /** The element with the focus, when one other than the document's body has it. */
@@ -128,15 +131,17 @@ function focused(): HTMLElement | null {
 /**
  * Go where a destination leads. Every press, link, entry and success that
  * holds a `to` goes through here: an address is followed, a page is opened in
- * its surface by the application shell.
+ * its surface by the application shell. Resolves once it has gone, with
+ * whether it did.
  */
-export function openDestination(to: DestinationWire, context: DestinationContext, origin: DestinationOrigin): void {
+export function openDestination(to: DestinationWire, context: DestinationContext, origin: DestinationOrigin): Promise<boolean> {
   switch (to.type) {
     case "navigate":
       return followAddress(context);
     case "openPage":
       if (context.pageHost === null) throw new Error("The renderer opened a page outside an application.");
-      return context.pageHost.open({ to, address: context.address, naming: origin.naming, opener: origin.opener ?? focused(), detail: origin.detail });
+      context.pageHost.open({ to, address: context.address, naming: origin.naming, opener: origin.opener ?? focused(), detail: origin.detail });
+      return Promise.resolve(true);
   }
 }
 

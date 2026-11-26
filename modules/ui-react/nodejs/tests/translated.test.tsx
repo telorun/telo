@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import { render, wireText, type Rendered } from "./harness.js";
-import { formNode, operation } from "./spec-nodes.js";
+import { buttonOf, call, formNode } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -51,15 +51,17 @@ describe("a page in Polish", () => {
         "/": {
           title: "Faktury",
           children: [
-            operation("/api/check", "Sprawdź", { type: "object", properties: {} }, {
-              answer: { type: "object", properties: { unpaid: { type: "integer" } } },
-              result: { type: "text", text: heading, style: "heading" },
-            }),
+            buttonOf(
+              call("/api/check", "Sprawdź", { type: "object", properties: {} }, {
+                answer: { type: "object", properties: { unpaid: { type: "integer" } } },
+                result: { type: "text", text: heading, style: "heading" },
+              }),
+            ),
           ],
         },
       },
     });
-    await rendered.click(rendered.part("submit"));
-    expect(rendered.part("action-result").textContent).toBe(expected);
+    await rendered.click(rendered.part("button"));
+    expect(rendered.part("mutation-result").textContent).toBe(expected);
   });
 });

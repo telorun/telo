@@ -22,7 +22,7 @@ export { isQuery, type BodyBinding, type QueryInstance, type QuerySpec } from ".
 // What pressing a region or a listing's record does, as a renderer receives it.
 export type { PressSpec } from "./press.js";
 export { modelShape, type Shape, type ShapeReader } from "./model-schema.js";
-export { placedBoundAction } from "./bound-actions.js";
+export { placedMutationCall } from "./mutation-calls.js";
 // An address or request target as a renderer receives it, with every default
 // filled, and the one way a renderer expands it (`conformance/addresses.json`).
 export { addressSpec, type AddressConfig } from "./address-spec.js";
@@ -97,7 +97,8 @@ export {
   TreeLayoutController,
 } from "./listing-layouts.js";
 export * as FormController from "./form-controller.js";
-export * as ActionController from "./action-controller.js";
+export * as MutationController from "./mutation-controller.js";
+export * as PromptController from "./prompt-controller.js";
 export * as FiltersController from "./filters-controller.js";
 export * as ComponentController from "./component-controller.js";
 export * as ComponentExportController from "./component-export-controller.js";

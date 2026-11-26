@@ -244,7 +244,7 @@ record does (left out, it does what `edit` does).
   filters. `telo check` refuses a layout the collection cannot serve (an
   unknown property, a missing `eq`, range or `parent` filter, `present` off
   `facets`). `Ui.ListLayout` takes `frame` (`framed` | `flush`).
-- `move` is a bound action over `row` and `to`: dragging a card or event runs it.
+- `move` is a `Ui.Move` over `row` and `to`: dragging a card or event runs it.
 - `row.<property>` in a `value`, a style rule's `by` or a `props` entry is an
   accessor: a plain chain or a literal. A data-dependent style is a rule
   `{ by, cases, default? }`.
@@ -379,79 +379,76 @@ edit: { to: { kind: Ui.OpenPage, page: !ref taskPage, pathParams: { id: !cel "ro
 - Entries sharing a `state` key hold a kept property as one value.
 - **`ui` owns every default.** Leave a key out; never restate a default.
 
-## Actions — a button that runs an operation
+## Writes — `Ui.Mutation` and its calls
 
-`Ui.Action` is a form with one button, sending a request to a route, and node
-trees drawn from what the route answered. It is reached by URL only:
-`request: { method, target }`, `method` `POST` (default), `PUT`, `PATCH` or
-`DELETE` — no `!ref` to a handler.
-
-Give the route and the action the **same two `Telo.JsonSchema` shapes**
-(`ReportRequest` is `{ month }`, `ReportAnswer` `{ files: [{ name, url }] }`):
+`Ui.Mutation` is a write and draws nothing: `inputModel`, `outputModel?`,
+`method` (`POST` default, `PUT`, `PATCH`, `DELETE`), `url` (an address over
+`input`), `invalidates?`, `concurrency?`. It is reached by URL only — no `!ref`
+to a handler. Give route and mutation the **same two `Telo.JsonSchema` shapes**:
 
 ```yaml
-kind: Ui.Action
+kind: Ui.Mutation
 metadata: { name: generate }
 inputModel: !ref ReportRequest
 outputModel: !ref ReportAnswer
-request: { target: /api/reports }
-label: Generate
-result: { type: list, rows: !cel "result.files", columns: [{ value: !cel "row.name" }] }
-onSuccess: { refreshes: [/api/reports] }
+url: /api/reports
+invalidates: [/api/reports]
 ```
 
-The route answers the **action contract**: a 2xx with a JSON object valid
-against `outputModel` (read only when `result` or `onSuccess.to` does), and a
-problem for any failure. An `Http.Api` route's `request.schema.body` takes the
-JSON Schema inline (a `!ref` there passes `telo check` and fails at boot), so
-write the shape out and keep it equal to `inputModel`.
+The route answers the **mutation contract**: a 2xx with a JSON object valid
+against `outputModel` (read only when a `result` tree, effect or `invalidates`
+does), a problem for any failure. An `Http.Api` route's `request.schema.body`
+takes the JSON Schema inline (a `!ref` there fails at boot): keep it equal to
+`inputModel`.
 
-- No `inputModel` properties: a bare button. `fields` left out is every
-  enterable input property; every required input must be enterable.
-- `result:` is a node tree drawn from a success, over `result` (typed from
-  `outputModel`; with none, `result.<member>` is `CEL_UNKNOWN_FIELD`), `input`
-  (the record sent) and `values` (what the form holds now). `failure:` is drawn
-  for anything else (a 400 also marks the fields) over `error` (`status`,
-  absent with no answer; `code`; `message`), `input` and `values`; left out, it
-  shows the error's code and message. Use a `list` node in `result`, not `lists`.
-- `target` is an address over `input`: `/api/tasks/{id}` with `pathParams:
-  { id: !cel "input.id" }`. An input read as exactly `input.<property>` is
-  consumed: it travels in the target, not the body. `DELETE` sends no body and
-  must consume every input property. A 2xx with no body (204) is a success
-  unless `result`, `onSuccess.to` or `refreshes` reads `result`.
-- `onSuccess.to` is a destination over `result` and `input`;
-  `refreshes` lists request targets; after a 2xx those, the target
-  and a listing's `basePath` are announced and every reader of exactly that
-  path (`Ui.Query`, `Ui.Listing`, `Ui.Chat`) reads again; a `QUERY` or `POST`
-  read matches as a `GET`. A literal segment may
-  be `*` (one) or `**` (any): `/api/projects/{id}/**`.
-- `concurrency: serial` runs presses in turn; `clearAnswerOn: [<property>]`
-  clears the answer on that input's change.
+- `url` reads `input`: `/api/tasks/{id}` with `pathParams: { id: !cel
+  "input.id" }`. An input read as exactly `input.<property>` is consumed: it
+  travels in the url, not the body. `DELETE` sends no body and must consume
+  every input property. A 204 is a success unless something reads `result`.
+- After a 2xx the url, `invalidates` targets and a listing's `basePath` are
+  announced; every reader of exactly that path (`Ui.Query`, `Ui.Listing`,
+  `Ui.Chat`) reads again. A segment may be `*` (one) or `**` (any).
+- `concurrency: serial` runs every call of it in turn.
 
-### Bound actions
-
-A `Ui.BoundAction` is `{ action, inputs, confirm?, prompt?, enabled? }`:
-`rowActions` on a listing or `list` puts one on every row, `annotations.action`
-and a layout's `move` take one, and a `button` node places one on a page,
-its `inputs` reading `params`, `query` and the tree's roots (`data`):
+A **call** runs one where it is placed: `Ui.MutationCall` is `{ mutation,
+inputs, label, confirm?, prompt?, enabled?, onSuccess?, result?, failure? }` —
+`rowActions` on a listing or `list`, `annotations.action`, and the `action` of a
+`button` node (`inputs: {}` for a mutation taking nothing). A layout's `move` is
+a `Ui.Move`: no `label`, no `result`.
 
 ```yaml
 rowActions:
-  - { action: { kind: Ui.Action, inputModel: !ref Archive, request: { target: /api/tasks/archive }, label: Archive }, inputs: { id: !cel "row.id", reason: tidy-up }, confirm: Archive this task? }
-  - { action: !ref reject, inputs: { id: !cel "row.id" }, prompt: true }
+  - mutation: !ref reject
+    inputs: { id: !cel "row.id", note: !cel "prompt.note" }
+    label: Reject
+    prompt: { kind: Ui.Prompt, model: !ref RejectNote }
+    onSuccess: [{ kind: Ui.Navigate, href: /tasks }]
 ```
 
-- `inputs` is the record sent, checked against that action's `inputModel`: it
-  must bind every required input, with matching types, unless `prompt: true`.
-  It reads `row` and the roots in scope; the action's `request` reads it as `input`.
-- `confirm` asks a question first; `prompt: true` opens a dialog (titled with
-  `confirm`, else the label) for the action's fields the inputs do not bind.
-  A required input may stay unbound; bound and entered values are held to the
-  whole `inputModel`, so an empty required field blocks sending.
-  `enabled` (a condition over `row`, with `disabledText`) governs the row's
-  button; the action's own does not.
-- A pressed one draws its `result` in place of the button and its `failure`
-  beside it.
+- `inputs` binds every required input with matching types, over `row`,
+  `params`, `query`, `data`, `prompt`; `inputModel` reads it as `input`.
+- `confirm` asks first; `prompt` is a `Ui.Prompt { model, fields?, groups? }`, a
+  dialog whose entries `inputs` reads as `prompt.<name>`. `enabled` is a
+  condition with `disabledText`.
+- `result:` is a node tree over `result` (typed from `outputModel`; with none,
+  `result.<member>` is `CEL_UNKNOWN_FIELD`) and `input`, drawn where the call
+  ran; `failure:` over `error` (`status`, `code`, `message`) and `input`, left
+  out it shows code and message. Use a `list` node, not `lists`.
+- `onSuccess` is a list of effects (`Ui.Navigate`, `Ui.OpenPage`) over `result`
+  and `input`, run in order by the page.
+
+### Forms that write, and reads that follow them
+
+A `Ui.Form` is a record editor (`record`), a mutation form or free-standing.
+`onSubmit: { mutation, inputs, label?, confirm?, enabled?, result?, failure? }`
+runs a write when pressed (`inputs` read `values`, `params`, `query`); the form's
+`onSuccess` effects follow `afterSubmit`, over `values` and `result`. `autosave:
+{ mutation, inputs, debounce? }` saves as values settle and must replace (`PUT`;
+a `POST` is refused); `clearAnswerOn` clears answers. `record` excludes both.
+
+A `Ui.Query` or `Ui.Listing` with `form: !ref f` reads the form's settled valid
+record as `form` (`body: { period: !cel "form.period" }`): a live preview
+needs no button.
 
 ## Reads and conditions — `Ui.Query`
 
@@ -505,7 +502,7 @@ it plus `placeholder`, `starters`, `show`, `composer`, `buttons` and `header` (n
 `stop`, `newConversation`; default a `bar` holding export, `[]` none).
 
 - `conversation: { parameter: conversation }` follows that query parameter;
-  omitted, the choice is in memory. `refreshes: [/api/chat/conversations]` re-reads that
+  omitted, the choice is in memory. `invalidates: [/api/chat/conversations]` re-reads that
   path when a send is admitted and a turn ends.
 - Mount
   `{ kind: Chat.Api, conversation: !ref … }` at the same `basePath`; import
@@ -607,7 +604,7 @@ a row style, a page size, fewer filters, a filter's `pinned` / `control` /
 
 ## Manifests wire no events
 
-There is no `onClick`: an operation is a `Ui.Action`. Requests carry the page's
+There is no `onClick`: a write is a `Ui.Mutation`. Requests carry the page's
 same-origin credentials; guard the routes.
 
 ## A desktop app

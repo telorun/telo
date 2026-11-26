@@ -2,10 +2,18 @@ import { isTauri } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import type { AppSettings, EditorState, EditorTab, ViewId } from "../model";
 import { normalizeRunnerSettings } from "../run/runners";
-import { loadPersistedState, loadSettings, saveSettings, saveState } from "../storage";
+import {
+  loadPersistedState,
+  loadSettings,
+  saveSettings,
+  saveState,
+  type WorkspaceBackend,
+} from "../storage";
 
 export interface PersistedEditorState {
   rootDir: string | null;
+  /** Absent in a hint written before the backend was recorded. */
+  backend?: WorkspaceBackend;
   activeModulePath: string | null;
   activeView: ViewId;
   openTabs: EditorTab[];
@@ -47,6 +55,7 @@ export function useEditorPersistence(
     if (saved) {
       setPersistedHint({
         rootDir: saved.rootDir,
+        backend: saved.backend,
         activeModulePath: saved.activeModulePath,
         activeView: (saved.activeView ?? "topology") as ViewId,
         openTabs: saved.openTabs ?? [],

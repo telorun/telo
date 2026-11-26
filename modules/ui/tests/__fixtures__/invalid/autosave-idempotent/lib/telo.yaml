@@ -1,0 +1,20 @@
+# An autosave over a `POST` written in the library: `telo check` refuses it
+# here, and a consumer's own check reports the same finding.
+kind: Telo.Library
+metadata:
+  name: UiInvalidAutosaveWritten
+  version: 1.0.0
+  description: Test fixture exporting forms that autosave over a mutation that creates, written in place and supplied by the importer.
+imports: { Ui: ../../../../../ }
+exports: { resources: [written] }
+---
+kind: Telo.JsonSchema
+metadata: { name: Draft }
+schema: { type: object, additionalProperties: false, properties: { title: { type: string } } }
+---
+kind: Ui.Form
+metadata: { name: written }
+model: !ref Draft
+autosave:
+  mutation: { kind: Ui.Mutation, inputModel: !ref Draft, url: /api/drafts }
+  inputs: { title: !cel "values.title" }

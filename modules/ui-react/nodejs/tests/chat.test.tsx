@@ -2,7 +2,7 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { render, wireText, type Rendered } from "./harness.js";
-import { address, navigateTo, operation, queryNode } from "./spec-nodes.js";
+import { address, buttonOf, call as mutationCall, navigateTo, queryNode } from "./spec-nodes.js";
 import { transcriptMarkdown } from "../src/browser/chat/chat-blocks.js";
 
 // The markdown renderer is a chunk fetched on first use; transforming it is slower than a test waits.
@@ -48,7 +48,7 @@ const chat = (spec: Record<string, unknown>, extra: Record<string, unknown> = {}
   },
   composer: { actions: "inside" },
   conversation: { parameter: "conversation" },
-  refreshes: [],
+  invalidates: [],
   ...extra,
 });
 
@@ -1268,8 +1268,7 @@ describe("the chat follows the page", () => {
   it("reads the shown conversation again when it is written, and draws it not found once it is deleted", async () => {
     let title = "One";
     let deleted = false;
-    const bare = (label: string, method: string) =>
-      operation("/api/chat/conversations/c1", label, empty, { request: { method, target: address("/api/chat/conversations/c1"), consumed: [] } });
+    const bare = (label: string, method: string) => buttonOf(mutationCall("/api/chat/conversations/c1", label, empty, { method }));
     const { r, calls } = await show(
       [bare("Rename", "PATCH"), bare("Delete", "DELETE"), chat({ operations: [] })],
       (call) => {
@@ -1286,9 +1285,9 @@ describe("the chat follows the page", () => {
     await eventually(() => expect(r.parts("chat-message")).toHaveLength(1));
     const reads = () => calls.filter((call) => call.method === "GET" && call.path === "/conversations/c1").length;
     expect(reads()).toBe(1);
-    await r.click(r.parts("submit")[0]);
+    await r.click(r.parts("button")[0]);
     await eventually(() => expect(reads()).toBe(2));
-    await r.click(r.parts("submit")[1]);
+    await r.click(r.parts("button")[1]);
     await eventually(() => expect(r.parts("error-code").map((each) => each.textContent)).toContain("ERR_CONVERSATION_NOT_FOUND"));
     expect(window.location.search).toBe("?conversation=c1");
   });
@@ -1296,7 +1295,7 @@ describe("the chat follows the page", () => {
   it("keeps the shown transcript drawn while it reads the conversation again after a write", async () => {
     const held = deferred();
     let reads = 0;
-    const rename = operation("/api/chat/conversations/c1", "Rename", empty, { request: { method: "PATCH", target: address("/api/chat/conversations/c1"), consumed: [] } });
+    const rename = buttonOf(mutationCall("/api/chat/conversations/c1", "Rename", empty, { method: "PATCH" }));
     const { r } = await show(
       [rename, chat({ operations: [] })],
       (call) => {
@@ -1308,7 +1307,7 @@ describe("the chat follows the page", () => {
       { path: "/?conversation=c1" },
     );
     await eventually(() => expect(r.parts("chat-message")).toHaveLength(1));
-    await r.click(r.parts("submit")[0]);
+    await r.click(r.parts("button")[0]);
     await eventually(() => expect(reads).toBe(2));
     expect(r.parts("chat-message")).toHaveLength(1);
     await act(async () => held.resolve(json(conversation("c1", "Two"))));
@@ -1328,7 +1327,7 @@ describe("the chat follows the page", () => {
         return undefined;
       },
     };
-    const { r, calls } = await show([queryNode({}, { id: "conversations", url: address("/api/chat/conversations") }), chat({ operations: [] }, { refreshes: [address("/api/chat/conversations")] })], served(world), {
+    const { r, calls } = await show([queryNode({}, { id: "conversations", url: address("/api/chat/conversations") }), chat({ operations: [] }, { invalidates: [address("/api/chat/conversations")] })], served(world), {
       path: "/?conversation=c1",
     });
     const reads = () => calls.filter((call) => call.method === "GET" && call.path === "/conversations").length;
@@ -1341,12 +1340,12 @@ describe("the chat follows the page", () => {
     await eventually(() => expect(reads()).toBe(3));
   });
 
-  it("notifies its refreshes, over the conversation's id, when a send is admitted and when its turn ends", async () => {
+  it("notifies its invalidates, over the conversation's id, when a send is admitted and when its turn ends", async () => {
     const events = tail();
     const readers = [queryNode({}, { id: "conversations", url: address("/api/chat/conversations") }), queryNode({}, { id: "conversation", url: address("/api/chat/conversations/c1") })];
-    const refreshes = [address("/api/chat/conversations"), address("/api/chat/conversations/{id}", { id: { root: "conversation", path: ["id"] } })];
+    const invalidates = [address("/api/chat/conversations"), address("/api/chat/conversations/{id}", { id: { root: "conversation", path: ["id"] } })];
     const { r, calls } = await show(
-      [...readers, chat({ operations: [] }, { refreshes })],
+      [...readers, chat({ operations: [] }, { invalidates })],
       (call) => {
         if (call.method === "POST") return json({ conversation: "c1", turn: "t1" });
         if (call.path === "/turns/t1/events") return events.response();

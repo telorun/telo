@@ -10,6 +10,7 @@ import { issuePlace, issueText, problemOf } from "./problem-details.js";
 import { RendererContext } from "./renderer-context.js";
 import type { SurfaceSpec } from "./surface.js";
 import { findingText, labelFor, useSay, useText, type Say, type ValueLabel, type WireText } from "./texts.js";
+import type { ChangeKind } from "./typing-pause.js";
 import { plainTypes, validate, type JsonSchema } from "./validation.js";
 
 /** The text warning of a range longer than its limit, by unit. */
@@ -324,7 +325,10 @@ interface FieldsProps {
   roots: Readonly<Record<string, unknown>>;
   /** What is wrong with a field, by property. */
   errors: Record<string, string>;
-  onChange: (property: string, value: unknown) => void;
+  /** A field's value changed: by a choice, which is whole when it is made, or by typing. */
+  onChange: (property: string, value: unknown, how: ChangeKind) => void;
+  /** Typed text is meant: Enter, leaving a field, releasing a slider. */
+  onCommit?: () => void;
 }
 
 const TYPED = ["number", "date", "datetime-local", "time"] as const;
@@ -373,11 +377,15 @@ interface ControlProps {
   schema: JsonSchema;
   roots: Readonly<Record<string, unknown>>;
   value: unknown;
+  /** A choice: whole when it is made. */
   onChange: (next: any) => void;
+  /** Typed text, whole once committed or when typing pauses. */
+  onType: (next: any) => void;
+  onCommit: () => void;
 }
 
 /** An input field's control, as it names it or as its property calls for. */
-function Input({ semantics, field, schema, value, onChange }: ControlProps) {
+function Input({ semantics, field, schema, value, onChange, onType, onCommit }: ControlProps) {
   const text = useText();
   const say = useSay();
   const show = useShowValue(field.labels);
@@ -387,7 +395,7 @@ function Input({ semantics, field, schema, value, onChange }: ControlProps) {
   const element = isList(schema) ? itemsOf(schema) : schema;
   const options = listedOptions(element, show).map(({ option }) => option);
   const control = useControls();
-  const entry = { ...semantics, name: field.property, value: String(value), onChange };
+  const entry = { ...semantics, name: field.property, value: String(value), onChange: onType };
   switch (widget) {
     case "checkbox": {
       const Checkbox = control("Checkbox");
@@ -430,9 +438,9 @@ function Input({ semantics, field, schema, value, onChange }: ControlProps) {
           step={multipleOf ?? (plainTypes(schema).includes("integer") ? 1 : (maximum - minimum) / 100)}
           value={value === "" ? String(minimum) : String(value)}
           valueText={value === "" ? undefined : String(value)}
-          onChange={onChange}
-          // A field holds every position it is moved to: letting go means nothing more.
-          onCommit={() => undefined}
+          onChange={onType}
+          // Letting go is the position meant.
+          onCommit={onCommit}
         />
       );
     }
@@ -456,11 +464,11 @@ function Input({ semantics, field, schema, value, onChange }: ControlProps) {
     }
     case "number": {
       const NumberInput = control("NumberInput");
-      return <NumberInput {...entry} part="input" integer={plainTypes(schema).includes("integer")} />;
+      return <NumberInput {...entry} part="input" integer={plainTypes(schema).includes("integer")} onCommit={onCommit} />;
     }
     case "date": {
       const DateInput = control("DateInput");
-      return <DateInput {...entry} part="input" lang={lang} />;
+      return <DateInput {...entry} part="input" lang={lang} onCommit={onCommit} />;
     }
     case "datetime-local": {
       const DateTimeInput = control("DateTimeInput");
@@ -472,7 +480,7 @@ function Input({ semantics, field, schema, value, onChange }: ControlProps) {
     }
     default: {
       const TextInput = control("TextInput");
-      return <TextInput {...entry} part="input" type="text" />;
+      return <TextInput {...entry} part="input" type="text" onCommit={onCommit} />;
     }
   }
 }
@@ -506,7 +514,7 @@ function DateRangeField({ semantics, field, value, onChange }: ControlProps) {
 }
 
 /** One labelled field. */
-function FieldControl({ id, schema, field, values, roots, errors, onChange }: Omit<FieldsProps, "fields" | "groups"> & { field: Field }) {
+function FieldControl({ id, schema, field, values, roots, errors, onChange, onCommit }: Omit<FieldsProps, "fields" | "groups"> & { field: Field }) {
   const text = useText();
   const say = useSay();
   const name = text(field.label);
@@ -514,7 +522,9 @@ function FieldControl({ id, schema, field, values, roots, errors, onChange }: Om
   const error = errors[field.property];
   const controlId = `${id}-${field.property}`;
   const value = values[field.property];
-  const set = (next: unknown) => onChange(field.property, next);
+  const set = (next: unknown) => onChange(field.property, next, "choice");
+  const type = (next: unknown) => onChange(field.property, next, "typed");
+  const commit = () => onCommit?.();
   const range = field.type === "dateRange" ? (value as Range) : undefined;
   const longer = range && field.warnLongerThan && rangeLongerThan(range, field.warnLongerThan);
   const described = field.description != null;
@@ -525,7 +535,7 @@ function FieldControl({ id, schema, field, values, roots, errors, onChange }: Om
     required: Array.isArray(schema.required) && schema.required.includes(field.property),
     disabled: false,
   };
-  const props: ControlProps = { semantics, field, schema: property, roots, value, onChange: set };
+  const props: ControlProps = { semantics, field, schema: property, roots, value, onChange: set, onType: type, onCommit: commit };
   const ownLabel = field.type === "input" && ["checkbox", "switch"].includes(widgetOf(field, property));
   const label = (
     <label data-telo-part="label" htmlFor={controlId}>
@@ -533,7 +543,8 @@ function FieldControl({ id, schema, field, values, roots, errors, onChange }: Om
     </label>
   );
   return (
-    <div data-telo-part="field" data-invalid={error ? "true" : undefined}>
+    // Leaving a field commits what was typed in it.
+    <div data-telo-part="field" data-invalid={error ? "true" : undefined} onBlur={commit}>
       {!ownLabel && field.type !== "dateRange" && label}
       {field.type === "choice" ? (
         <Choice {...props} />

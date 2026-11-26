@@ -22,7 +22,7 @@ schema:
       type: array
       items: { type: object, required: [type], properties: { type: { type: string } } }
 ---
-kind: Ui.Action
+kind: Ui.Mutation
 metadata: { name: comment }
 inputModel:
   kind: Telo.JsonSchema
@@ -30,8 +30,7 @@ inputModel:
     type: object
     required: [item, body]
     properties: { item: { type: string }, body: { type: string } }
-request: { target: /api/comments }
-label: Comment
+url: /api/comments
 ---
 kind: Ui.View
 metadata: { name: lineTypo }
@@ -47,7 +46,7 @@ content:
       annotations:
         rows: !cel "data.items"
         line: !cel "row.lnie"
-        action: { action: !ref comment, inputs: { item: !cel "row.id" }, prompt: true }
+        action: { mutation: !ref comment, inputs: { item: !cel "row.id", body: !cel "row.id" }, label: Comment }
 ---
 kind: Ui.View
 metadata: { name: markdownNotString }

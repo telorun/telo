@@ -1,0 +1,5 @@
+units:
+  apps/hub: Added
+body: The build-ui guide covers writes declared once as Ui.Mutation and run by calls,
+  Ui.Form's onSubmit, autosave and onSuccess, and queries and listings that follow a
+  form through form.

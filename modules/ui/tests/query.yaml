@@ -127,6 +127,7 @@ steps:
         url: { path: { value: /api/auth }, pathParams: {}, queryParams: {} }
         input: null
         query: {}
+        form: null
         reloadOn: [focus, unauthorized]
   - name: report
     invoke: { kind: Probe.Read, source: !ref report }
@@ -147,6 +148,7 @@ steps:
               size: { value: 20 }
               note: { value: null }
         query: { from: { type: string, format: date }, to: { type: string, format: date }, project: { type: array, items: { type: string } } }
+        form: null
         reloadOn: []
         reloadEvery: 60000
   - name: posted

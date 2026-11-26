@@ -1,4 +1,4 @@
-# Forms and actions whose fields, groups and kept state their model cannot
+# Forms whose fields, groups and kept state their model cannot
 # answer for, field kinds that do not fit the property they enter, and option
 # sources the collection they read would refuse. `telo check` reports every one
 # here; a consumer's own check sees none of them, so there each is refused when
@@ -8,11 +8,11 @@ metadata:
   name: UiInvalidFields
   version: 1.0.0
   description: >-
-    Test fixture exporting forms, actions, a filter bar and option sources that
+    Test fixture exporting forms, a filter bar and option sources that
     each break one rule of field kinds, groups, kept state or option sources.
 imports: { Ui: ../../../../, DataModel: ../../../../../data-model }
 exports:
-  resources: [fieldUnknown, fieldDuplicate, requiredNotEntered, groupUnknown, groupDuplicate, groupSplit, stateFieldUnknown, filtersStateFieldUnknown, inputControl, actionInputControl, choiceControl, choiceMismatch, pickerMismatch, rangeProperty, rangeDefault, rangePresetUnknown, rangeLabelDuplicate, searchNotAccepted, valueNotFilterable, optionFilterNotAccepted]
+  resources: [fieldUnknown, fieldDuplicate, requiredNotEntered, groupUnknown, groupDuplicate, groupSplit, stateFieldUnknown, filtersStateFieldUnknown, inputControl, submitInputControl, choiceControl, choiceMismatch, pickerMismatch, rangeProperty, rangeDefault, rangePresetUnknown, rangeLabelDuplicate, searchNotAccepted, valueNotFilterable, optionFilterNotAccepted]
 ---
 kind: Telo.JsonSchema
 metadata: { name: Task }
@@ -143,11 +143,13 @@ record: { presentation: !ref tasks }
 fields:
   - { kind: Ui.InputField, property: text, control: toggle }
 ---
-kind: Ui.Action
-metadata: { name: actionInputControl }
-inputModel: !ref Task
-request: { target: /api/tasks }
-label: Send
+kind: Ui.Form
+metadata: { name: submitInputControl }
+model: !ref Task
+onSubmit:
+  mutation: { kind: Ui.Mutation, inputModel: { kind: Telo.JsonSchema, schema: { type: object, properties: {} } }, url: /api/tasks }
+  inputs: {}
+  label: Send
 fields:
   - { kind: Ui.InputField, property: isDone, control: slider }
 ---

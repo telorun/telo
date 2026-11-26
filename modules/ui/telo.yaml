@@ -13,8 +13,8 @@ metadata:
     custom components and design tokens — rendered into an admin panel or
     back-office screen without frontend code.
 requires:
-  # Measured by `telo release floor`: 0.137.0 refuses this file.
-  telo: ">=0.140.0"
+  # Measured by `telo release floor`: no published telo reads this file.
+  telo: ">=unreleased"
 restrictions:
   - requires: { telo: ">=0.139.0" }
     reason: >-
@@ -28,7 +28,7 @@ lang: en
 # which control fits which property, what a listing's read plan requests, and how
 # text typed into a search box becomes filter values, and what a query's body
 # template resolves to.
-files: [conformance/match.json, conformance/control-fits.json, conformance/listing-reads.json, conformance/addresses.json, conformance/current-location.json, conformance/refreshes.json, conformance/filter-tokens.json, conformance/template-bindings.json, conformance/merge-patch.json]
+files: [conformance/match.json, conformance/control-fits.json, conformance/listing-reads.json, conformance/addresses.json, conformance/current-location.json, conformance/invalidations.json, conformance/filter-tokens.json, conformance/template-bindings.json, conformance/merge-patch.json, conformance/form-writes.json]
 # ui's own texts translated, one `Self.Translations` per language.
 include: [./translations/de.yaml, ./translations/es.yaml, ./translations/fr.yaml, ./translations/hi.yaml, ./translations/it.yaml, ./translations/ja.yaml, ./translations/ko.yaml, ./translations/nl.yaml, ./translations/pl.yaml, ./translations/pt.yaml, ./translations/ru.yaml, ./translations/tr.yaml, ./translations/uk.yaml, ./translations/zh.yaml]
 imports: { Font: ../font, DataModel: ../data-model, Conversation: ../conversation }
@@ -60,8 +60,8 @@ migrations:
           /failure: /content/failure/0
         set: { kind: Self.View, content: { type: query, query: { kind: Self.Query } } }
 exports:
-  kinds: [Translations, Composite, Surface, Overlay, ViewportOverlay, Dialog, Drawer, Popover, InlineSurface, Panel, Destination, Navigate, OpenPage, FilterPlacement, FoldingFilterPlacement, AbovePlacement, AsidePlacement, CollapsiblePlacement, OverlayPlacement, SearchBoxPlacement, StateStore, LocalStore, SessionStore, NavigationPlacement, CompactNavigationPlacement, HeaderNavigation, OverlayNavigation, TabBarNavigation, Icon, FileIcon, ButtonDisplay, TextButton, IconButton, Page, PageLayout, Pane, NavigationPane, Navbar, NavigationColumn, View, CollectionSource, ConversationSource, CollectionPresentation, Chat, SplitView, Listing, ListingLayout, TableLayout, ListLayout, CardLayout, BoardLayout, CalendarLayout, TimelineLayout, TreeLayout, ComponentLayout, Form, Action, Filters, Component, ComponentExport, DesignTokens, Query, Field, InputField, ChoiceField, PickerField, DateRangeField, OptionSource, CollectionOptions]
-  resources: [chineseTranslations, dutchTranslations, frenchTranslations, germanTranslations, hindiTranslations, italianTranslations, japaneseTranslations, koreanTranslations, polishTranslations, portugueseTranslations, russianTranslations, spanishTranslations, turkishTranslations, ukrainianTranslations, BoundText, Match, Condition, Enablement, RequestError, AppRelativeReference, QueryParameters, Address, RequestTarget, RefreshTarget, Control, FieldGroup, StateRecord, FieldAnswer, OptionSourceSpec, Relations, ListingLayoutSpec, ListingLayoutAnswer, controlFits, BoundAction, Command, Press, Grouping, Span, Node, SpecNode, OverlaySpec, SurfaceSpec, DestinationSpec, QuerySpec, PressSpec, ButtonDisplaySpec, AfterSubmit, UnsavedInput, FilterPolicy, FilterDisplay, FilterPlacementSpec, StateStoreSpec, Navigation, NavigationItem, NavigationPlacementSpec, PageWidth, Frame, RowActionsDisplay, Aside, PageRoute]
+  kinds: [Translations, Composite, Surface, Overlay, ViewportOverlay, Dialog, Drawer, Popover, InlineSurface, Panel, Effect, Destination, Navigate, OpenPage, FilterPlacement, FoldingFilterPlacement, AbovePlacement, AsidePlacement, CollapsiblePlacement, OverlayPlacement, SearchBoxPlacement, StateStore, LocalStore, SessionStore, NavigationPlacement, CompactNavigationPlacement, HeaderNavigation, OverlayNavigation, TabBarNavigation, Icon, FileIcon, ButtonDisplay, TextButton, IconButton, Page, PageLayout, Pane, NavigationPane, Navbar, NavigationColumn, View, CollectionSource, ConversationSource, CollectionPresentation, Chat, SplitView, Listing, ListingLayout, TableLayout, ListLayout, CardLayout, BoardLayout, CalendarLayout, TimelineLayout, TreeLayout, ComponentLayout, Form, Prompt, Filters, Component, ComponentExport, DesignTokens, Query, Mutation, Field, InputField, ChoiceField, PickerField, DateRangeField, OptionSource, CollectionOptions]
+  resources: [chineseTranslations, dutchTranslations, frenchTranslations, germanTranslations, hindiTranslations, italianTranslations, japaneseTranslations, koreanTranslations, polishTranslations, portugueseTranslations, russianTranslations, spanishTranslations, turkishTranslations, ukrainianTranslations, BoundText, Match, Condition, Enablement, RequestError, AppRelativeReference, QueryParameters, Address, RequestTarget, InvalidationTarget, Control, FieldGroup, StateRecord, FieldAnswer, OptionSourceSpec, Relations, ListingLayoutSpec, ListingLayoutAnswer, controlFits, MutationCall, Move, Command, Press, Grouping, Span, Node, SpecNode, OverlaySpec, SurfaceSpec, DestinationSpec, EffectSpec, PromptSpec, MutationSpec, QuerySpec, PressSpec, ButtonDisplaySpec, AfterSubmit, UnsavedInput, FilterPolicy, FilterDisplay, FilterPlacementSpec, StateStoreSpec, Navigation, NavigationItem, NavigationPlacementSpec, PageWidth, Frame, RowActionsDisplay, Aside, PageRoute]
   # The entry point a renderer's controller bundle resolves `@telorun/ui` to:
   # how a built browser entry becomes the files a page loads, so a renderer
   # addresses its own entries exactly as a placed component's are addressed.
@@ -324,7 +324,7 @@ schema:
 # none included). A path read from data, and every value of `pathParams`, is
 # exact: a `*` in either is text.
 kind: Telo.JsonSchema
-metadata: { name: RefreshTarget }
+metadata: { name: InvalidationTarget }
 schema:
   anyOf:
     - { type: string, pattern: "^[^{}]*$", $ref: "telo:Ui/AppRelativeReference" }
@@ -637,7 +637,7 @@ schema:
       properties:
         type: { const: board }
         content: { $ref: "telo:Ui/SpecNode" }
-        move: { $ref: "telo:Ui/SpecNode#/$defs/BoundAction" }
+        move: { $ref: "telo:Ui/SpecNode#/$defs/Move" }
         reads: { $ref: "#/$defs/Reads" }
     # Records placed on the days of `period`, the initial one shown, over
     # `reads.span`.
@@ -647,7 +647,7 @@ schema:
         type: { const: calendar }
         period: { enum: [month, week, day] }
         content: { $ref: "telo:Ui/SpecNode" }
-        move: { $ref: "telo:Ui/SpecNode#/$defs/BoundAction" }
+        move: { $ref: "telo:Ui/SpecNode#/$defs/Move" }
         reads: { $ref: "#/$defs/Reads" }
     # Records as bars along time at `scale`, over `reads.span`, in a lane per
     # group of `reads.groups` when it is present.
@@ -657,7 +657,7 @@ schema:
         type: { const: timeline }
         scale: { enum: [day, week, month, quarter] }
         content: { $ref: "telo:Ui/SpecNode" }
-        move: { $ref: "telo:Ui/SpecNode#/$defs/BoundAction" }
+        move: { $ref: "telo:Ui/SpecNode#/$defs/Move" }
         reads: { $ref: "#/$defs/Reads" }
     # Root records, and a record's children under it when it is expanded,
     # over `reads.parent`.
@@ -666,7 +666,7 @@ schema:
       properties:
         type: { const: tree }
         content: { $ref: "telo:Ui/SpecNode" }
-        move: { $ref: "telo:Ui/SpecNode#/$defs/BoundAction" }
+        move: { $ref: "telo:Ui/SpecNode#/$defs/Move" }
         reads: { $ref: "#/$defs/Reads" }
     # A browser component drawing the records the plan reads; each prop a
     # fixed value, or a path into `row` delivered per record.
@@ -682,7 +682,7 @@ schema:
         props:
           type: object
           additionalProperties: { $ref: "telo:Ui/SpecNode#/$defs/Binding" }
-        move: { $ref: "telo:Ui/SpecNode#/$defs/BoundAction" }
+        move: { $ref: "telo:Ui/SpecNode#/$defs/Move" }
         reads: { $ref: "#/$defs/Reads" }
   $defs:
     # Three dimensions composing as a product; none of them is pages alone.
@@ -814,56 +814,141 @@ body: !cel >-
       : control == 'tags' ? (operator == null ? listed : operator == 'in')
       : control == 'none' && operator != null)))))))
 ---
-# An operation run with inputs bound from the data in scope: the action, what
-# it is sent, and how a press is asked and allowed. Used by a listing's and a
-# list node's rows, a `button` node and a layout's move; the roots its
-# accessors read — `row` among them — are bound where it is used.
+# A pressed run of a mutation, where it is placed: the write, what it is sent,
+# how the press is asked and allowed, and what is drawn of its answer. Used by
+# a listing's and a list node's rows, a markdown annotation and a `button`
+# node; the roots its accessors read — `row` among them — are bound where it
+# is used. A key that means nothing to a holder is not listed in its shape.
 kind: Telo.JsonSchema
-metadata: { name: BoundAction }
+metadata: { name: MutationCall }
 schema:
   type: object
   additionalProperties: false
-  required: [action, inputs]
+  required: [mutation, inputs, label]
   properties:
-    action:
-      title: Action
+    mutation:
+      title: Mutation
       description: >-
-        The operation run. Its path, input model, label, answer trees and
-        `onSuccess` are used, and its fields where `prompt` asks for them; its
-        own `enabled` governs its own form only.
-      x-telo-ref: { kind: Self.Action, use: dependency, inputs: /inputs, completedWhen: /prompt }
+        The write run, a mutation declared once or in place. Its url, method,
+        input model and invalidations are used; what follows a success and what
+        is drawn of the answer are this call's own.
+      x-telo-ref: { kind: Self.Mutation, use: dependency, inputs: /inputs }
     inputs:
       title: Inputs
       description: >-
-        What the operation receives, by input property: a path into a root in
-        scope, or a fixed value. Every input the action requires is bound, unless
-        `prompt` asks the person for the rest. Read when the button is pressed.
+        What the mutation receives, by input property: a path into a root in
+        scope — `prompt`, what was entered, where the call asks — or a fixed
+        value. Every input the mutation requires is bound (`{}` for one that
+        takes nothing). Read when the button is pressed.
       type: object
-      minProperties: 1
+      x-telo-context:
+        type: object
+        properties:
+          prompt:
+            x-telo-context-eval: accessor
+            x-telo-context-ref-from: prompt/model
+            x-telo-context-withheld: the call asks for nothing in `prompt`.
       additionalProperties: { x-telo-eval: accessor }
+    label:
+      title: Label
+      description: >-
+        The button's accessible name, and nothing else names it. Include the
+        text the button shows, so speech input finds it.
+      $ref: "telo:Ui/BoundText"
     confirm:
       title: Confirm
-      description: >-
-        A question asked before the operation runs. Omitted, a press runs it at
-        once, unless `prompt` opens a dialog.
+      description: A question asked before the write runs. Omitted, a press runs it at once, unless `prompt` opens a dialog.
       allOf:
         - { $ref: "telo:Ui/BoundText" }
         - { minLength: 1 }
     prompt:
       title: Prompt
       description: >-
-        Whether a press opens a dialog asking for the action's fields `inputs`
-        does not bind — a reason, a note — sent with the bound values, so a
-        required input left unbound is entered there. The dialog is titled with
-        `confirm`, or with the action's label.
-      type: boolean
-      default: false
+        A dialog asking for entries before the write runs — a reason, a note —
+        which `inputs` reads as `prompt`. The dialog is titled with `confirm`,
+        or with the label.
+      type: object
+      x-telo-ref: { kind: Self.Prompt, use: dependency }
     enabled:
       title: Enabled
       description: >-
         When the button can be pressed, over the roots in scope, and the reason
         shown while it cannot. Omitted, it always can.
       $ref: "telo:Ui/Enablement"
+    onSuccess:
+      title: On success
+      description: >-
+        Effects run in order once the write succeeds, over `result` (the
+        answer) and `input` (the record sent), each after the one before has
+        happened. One reading `result` makes the success's body read.
+      type: array
+      items: { x-telo-ref: { kind: Self.Effect, use: dependency } }
+      x-telo-context:
+        type: object
+        properties:
+          result: { x-telo-context-eval: accessor, x-telo-context-ref-from: mutation/outputModel, type: object, properties: {}, additionalProperties: false }
+          input: { x-telo-context-eval: accessor, x-telo-context-ref-from: mutation/inputModel }
+    result:
+      title: Result
+      description: >-
+        What is drawn of a success where the call ran, over `result` and
+        `input`. Omitted, a success draws nothing.
+      $ref: "telo:Ui/Node"
+      x-telo-context:
+        type: object
+        properties:
+          request: { $ref: "telo:Ui/MutationCall#/$defs/CallRequest" }
+          result: { x-telo-context-eval: accessor, x-telo-context-ref-from: mutation/outputModel, type: object, properties: {}, additionalProperties: false }
+          input: { x-telo-context-eval: accessor, x-telo-context-ref-from: mutation/inputModel }
+    failure:
+      title: Failure
+      description: >-
+        What is drawn when the write does not succeed — any answer but a 2xx,
+        no answer at all, or a 2xx body the output model refuses — over `error`
+        and `input`. Omitted, the error's code and message.
+      $ref: "telo:Ui/Node"
+      x-telo-context:
+        type: object
+        properties:
+          request: { $ref: "telo:Ui/MutationCall#/$defs/CallRequest" }
+          error: { x-telo-context-eval: accessor, $ref: "telo:Ui/RequestError" }
+          input: { x-telo-context-eval: accessor, x-telo-context-ref-from: mutation/inputModel }
+  $defs:
+    # Named in each answer tree of a call and read by none: the trees are resolved once, at creation.
+    CallRequest:
+      x-telo-context-withheld: >-
+        a call's trees are resolved once, at creation, with no request. Read
+        what the request holds in the page that places the call.
+---
+# A layout's `move`, a gesture with no button: a call without a label, since
+# the "Move to" menu names the target, and without a result, since the success
+# is the record in its new place; its failure is drawn on the record.
+kind: Telo.JsonSchema
+metadata: { name: Move }
+schema:
+  type: object
+  additionalProperties: false
+  required: [mutation, inputs]
+  properties:
+    mutation: { $ref: "telo:Ui/MutationCall#/properties/mutation" }
+    inputs: { $ref: "telo:Ui/MutationCall#/properties/inputs" }
+    confirm: { $ref: "telo:Ui/MutationCall#/properties/confirm" }
+    prompt: { $ref: "telo:Ui/MutationCall#/properties/prompt" }
+    enabled: { $ref: "telo:Ui/MutationCall#/properties/enabled" }
+    onSuccess: { $ref: "telo:Ui/MutationCall#/properties/onSuccess" }
+    failure:
+      title: Failure
+      description: >-
+        What is drawn when the write does not succeed — any answer but a 2xx,
+        no answer at all, or a 2xx body the output model refuses — over `error`
+        and `input`. Omitted, the error's code and message.
+      $ref: "telo:Ui/Node"
+      x-telo-context:
+        type: object
+        properties:
+          request: { $ref: "telo:Ui/MutationCall#/$defs/CallRequest" }
+          error: { x-telo-context-eval: accessor, $ref: "telo:Ui/RequestError" }
+          input: { x-telo-context-eval: accessor, x-telo-context-ref-from: mutation/inputModel }
 ---
 # A command a root of a region offers to the nodes drawn over it: a chat's
 # export, a listing's reload. Each command is a member of that root.
@@ -1072,7 +1157,7 @@ schema:
                   row: { x-telo-context-element-from-item: "0/rows", x-telo-context-eval: accessor }
             # The item's control, labelled with the action's label, over `row` and the roots in scope.
             action:
-              $ref: "telo:Ui/BoundAction"
+              $ref: "telo:Ui/MutationCall"
               x-telo-context:
                 type: object
                 properties:
@@ -1143,26 +1228,21 @@ schema:
             type: object
             properties:
               row: { x-telo-context-element-from-item: "0/rows", x-telo-context-eval: accessor }
-          items: { $ref: "telo:Ui/BoundAction" }
+          items: { $ref: "telo:Ui/MutationCall" }
         # How the row actions are drawn: `auto` measures the room.
         rowActionsDisplay: { $ref: "telo:Ui/RowActionsDisplay" }
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
         fill: { type: boolean, default: false }
-    # A button running an action with inputs bound from the roots in scope —
-    # `params`, `query`, a reader's `data`: a bound action's members. Labelled
-    # with the action's label; a pressed one draws its action's answer in place
-    # of the button.
+    # A button running a mutation call: its inputs bound from the roots in
+    # scope — `params`, `query`, a reader's `data`. A pressed one draws its
+    # answer in place of the button.
     - additionalProperties: false
-      required: [type, action, inputs]
+      required: [type, action]
       properties:
         type: { const: button }
-        action: { $ref: "telo:Ui/BoundAction#/properties/action" }
-        inputs: { $ref: "telo:Ui/BoundAction#/properties/inputs" }
-        confirm: { $ref: "telo:Ui/BoundAction#/properties/confirm" }
-        prompt: { $ref: "telo:Ui/BoundAction#/properties/prompt" }
-        enabled: { $ref: "telo:Ui/BoundAction#/properties/enabled" }
+        action: { $ref: "telo:Ui/MutationCall" }
         # Draws the button by its text, or by a glyph with the label as its name.
         button: { x-telo-ref: { kind: Self.ButtonDisplay, use: dependency } }
         style: { $ref: "#/$defs/Style" }
@@ -1222,6 +1302,7 @@ schema:
             properties:
               data: { x-telo-context-ref-from: query/model, x-telo-context-eval: accessor }
               query: { x-telo-context-eval: accessor, x-telo-context-from: query/query, type: object, properties: {}, additionalProperties: false }
+              form: { x-telo-context-eval: accessor, x-telo-context-ref-from: query/form/model, x-telo-context-withheld: "the query names no form in `form`." }
         loading:
           type: array
           items: { $ref: "#" }
@@ -1229,6 +1310,7 @@ schema:
             type: object
             properties:
               query: { x-telo-context-eval: accessor, x-telo-context-from: query/query, type: object, properties: {}, additionalProperties: false }
+              form: { x-telo-context-eval: accessor, x-telo-context-ref-from: query/form/model, x-telo-context-withheld: "the query names no form in `form`." }
         failure:
           type: array
           items: { $ref: "#" }
@@ -1237,6 +1319,7 @@ schema:
             properties:
               error: { x-telo-context-eval: accessor, $ref: "telo:Ui/RequestError" }
               query: { x-telo-context-eval: accessor, x-telo-context-from: query/query, type: object, properties: {}, additionalProperties: false }
+              form: { x-telo-context-eval: accessor, x-telo-context-ref-from: query/form/model, x-telo-context-withheld: "the query names no form in `form`." }
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
@@ -1399,7 +1482,7 @@ schema:
     # `compact` below the application's breakpoint, keeping the listing's
     # state). Everything but the drawing is the listing's, whatever the layout.
     - additionalProperties: false
-      required: [type, schema, basePath, key, query, pageSize, paging, sort, show, create, edit, delete, rowActions, rowActionsDisplay, relations, empty, layout, press, fill]
+      required: [type, schema, basePath, key, query, form, pageSize, paging, sort, show, create, edit, delete, rowActions, rowActionsDisplay, relations, empty, layout, press, fill]
       properties:
         type: { const: listing }
         schema: { type: object }
@@ -1409,6 +1492,9 @@ schema:
         # The declared query parameters its row actions read, by name; empty
         # when none is.
         query: { type: object }
+        # The id of the form whose values `filters` and the row actions read as
+        # `form`; null when it names none.
+        form: { type: [string, "null"] }
         # Equalities sent with every request, each a fixed value or a path
         # into a root in scope; while one holds nothing, nothing is read.
         filters: { type: object, additionalProperties: { $ref: "#/$defs/Binding" } }
@@ -1437,7 +1523,7 @@ schema:
         delete: { type: boolean }
         # What each record offers beyond edit and delete, in order: an
         # operation run with values of the record.
-        rowActions: { type: array, items: { $ref: "#/$defs/BoundAction" } }
+        rowActions: { type: array, items: { $ref: "#/$defs/MutationCall" } }
         rowActionsDisplay: { $ref: "telo:Ui/RowActionsDisplay" }
         # The related records each property with a relation is labelled from,
         # by property: read with its key under `in`, one batch per page.
@@ -1454,30 +1540,43 @@ schema:
         shown: { $ref: "#/$defs/Shown" }
         fill: { type: boolean }
     - additionalProperties: false
-      required: [type, schema, record, initialValues, unsaved, afterSubmit, fields, groups, state, fill]
+      required: [type, id, schema, record, initialValues, unsaved, afterSubmit, fields, groups, state, onSubmit, autosave, onSuccess, clearAnswerOn, fill]
       properties:
         type: { const: form }
+        # The declaration's identity: the settled record of every placement of
+        # one form is kept under it, and a query or listing names it as `form`.
+        id: { type: string }
         schema: { type: object }
-        # The collection the record is written to and, when it edits a stored
-        # record, the binding of that record's key: `PATCH <basePath>/<key>`
-        # where one is given, else `POST <basePath>`.
+        # The collection the record is written to, the binding of a stored
+        # record's key (`PATCH <basePath>/<key>`, else `POST <basePath>`) and
+        # the collection's model, which the stored record answered is held to.
         record:
-          type: object
-          additionalProperties: false
-          required: [basePath, key]
-          properties:
-            basePath: { $ref: "#/$defs/BasePath" }
-            key: { anyOf: [{ type: "null" }, { $ref: "#/$defs/Binding" }] }
+          anyOf:
+            - { type: "null" }
+            - type: object
+              additionalProperties: false
+              required: [basePath, key, answer]
+              properties:
+                basePath: { $ref: "#/$defs/BasePath" }
+                key: { anyOf: [{ type: "null" }, { $ref: "#/$defs/Binding" }] }
+                answer: { type: object }
         initialValues: { anyOf: [{ type: "null" }, { $ref: "#/$defs/Binding" }] }
         unsaved: { enum: [confirm, discard] }
         afterSubmit: { enum: [close, keep, again] }
         fields: { type: array, items: { $ref: "#/$defs/Field" } }
         groups: { type: array, items: { $ref: "#/$defs/Group" } }
         state: { $ref: "#/$defs/State" }
+        # The write sent when the form is submitted, instead of a collection write.
+        onSubmit: { anyOf: [{ type: "null" }, { $ref: "#/$defs/FormSubmit" }] }
+        # The write sent as the values settle.
+        autosave: { anyOf: [{ type: "null" }, { $ref: "#/$defs/FormAutosave" }] }
+        # Run in order after the submit write succeeds, over `values` and `result`.
+        onSuccess: { type: array, items: { $ref: "telo:Ui/EffectSpec" } }
+        # Properties whose change clears what the writes drew of their last answers.
+        clearAnswerOn: { type: array, items: { type: string } }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
         fill: { type: boolean }
-    - { $ref: "#/$defs/Action" }
     - additionalProperties: false
       required: [type, basePath, fields, content, placement, apply, state, presets, fill]
       properties:
@@ -1620,27 +1719,17 @@ schema:
                   shown: { $ref: "#/$defs/Shown" }
                   style: { $ref: "#/$defs/StyleRule" }
         rowStyle: { $ref: "#/$defs/StyleRule" }
-        rowActions: { type: array, items: { $ref: "#/$defs/BoundAction" } }
+        rowActions: { type: array, items: { $ref: "#/$defs/MutationCall" } }
         rowActionsDisplay: { $ref: "telo:Ui/RowActionsDisplay" }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
         fill: { type: boolean }
-    # A button running its action with the bound inputs, labelled with the
-    # action's label: a bound action with how the button is drawn.
+    # A button running a mutation call, with how the button is drawn.
     - additionalProperties: false
-      required: [type, action, inputs, button, fill]
+      required: [type, action, button, fill]
       properties:
         type: { const: button }
-        action: { $ref: "#/$defs/Action" }
-        inputs: { type: object, additionalProperties: { $ref: "#/$defs/Binding" } }
-        confirm: { $ref: "#/$defs/NodeText" }
-        # Present when the press opens a dialog entering these fields first.
-        prompt:
-          type: object
-          additionalProperties: false
-          required: [fields]
-          properties: { fields: { type: array, items: { $ref: "#/$defs/Field" } } }
-        enabled: { $ref: "#/$defs/Enablement" }
+        action: { $ref: "#/$defs/MutationCall" }
         button: { $ref: "telo:Ui/ButtonDisplaySpec" }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
@@ -1696,7 +1785,7 @@ schema:
             rows: { $ref: "#/$defs/Binding" }
             line: { $ref: "#/$defs/Binding" }
             count: { $ref: "#/$defs/Binding" }
-            action: { $ref: "#/$defs/BoundAction" }
+            action: { $ref: "#/$defs/MutationCall" }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
         fill: { type: boolean }
@@ -1704,7 +1793,7 @@ schema:
     # served, and how the page presents it. Every member is present;
     # `placeholder` is null when not drawn, `header` empty when none is.
     - additionalProperties: false
-      required: [type, spec, basePath, header, placeholder, starters, show, buttons, composer, conversation, refreshes, fill]
+      required: [type, spec, basePath, header, placeholder, starters, show, buttons, composer, conversation, invalidates, fill]
       properties:
         type: { const: chat }
         spec: { $ref: "telo:Conversations/Spec" }
@@ -1756,7 +1845,7 @@ schema:
               required: [parameter]
               properties: { parameter: { type: string } }
         # Requests read again when a send is admitted and when a turn ends, over `conversation.id`.
-        refreshes: { type: array, items: { $ref: "#/$defs/Address" } }
+        invalidates: { type: array, items: { $ref: "#/$defs/Address" } }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
         fill: { type: boolean }
@@ -1889,69 +1978,71 @@ schema:
         additionalProperties: false
         required: [value, label]
         properties: { value: {}, label: { $ref: "#/$defs/Text" } }
-    # An operation run from a page: its form, and what it draws of the answer
-    # — `result` over `result`, `input` and `values`, `failure` over `error`,
-    # `input` and `values`.
-    Action:
+    # What a call asks before the write runs: the record's shape, and the
+    # fields entering it; null when the press asks nothing.
+    Prompt:
+      anyOf:
+        - { type: "null" }
+        - { $ref: "telo:Ui/PromptSpec" }
+    # A mutation run with bound inputs: the write, what it is sent, how a press
+    # is asked and allowed, and what follows and is drawn of the answer.
+    MutationCall:
       type: object
       additionalProperties: false
-      required: [type, schema, request, label, fields, groups, state, failure, onSuccess, concurrency, clearAnswerOn, fill]
+      required: [mutation, inputs, label, prompt, onSuccess, failure]
       properties:
-        type: { const: action }
-        schema: { type: object }
-        # `consumed`: the input properties the target's parameters read whole
-        # (`input.<property>`), which the body leaves out.
-        request:
-          type: object
-          additionalProperties: false
-          required: [method, target, consumed]
-          properties:
-            method: { enum: [POST, PUT, PATCH, DELETE] }
-            target: { $ref: "#/$defs/Address" }
-            consumed: { type: array, items: { type: string } }
-        label: { $ref: "#/$defs/Text" }
-        fields: { type: array, items: { $ref: "#/$defs/Field" } }
-        groups: { type: array, items: { $ref: "#/$defs/Group" } }
-        state: { $ref: "#/$defs/State" }
-        # Present when the button is enabled by a condition over the values.
-        enabled: { $ref: "#/$defs/Enablement" }
-        # Present when the answer is declared: what a success's body is held to.
-        answer: { type: object }
-        # Present when something is drawn from a success.
-        result: { $ref: "#" }
-        failure: { $ref: "#" }
-        onSuccess:
-          type: object
-          additionalProperties: false
-          required: [refreshes]
-          properties:
-            # Present when written: where a success goes.
-            to: { $ref: "telo:Ui/DestinationSpec" }
-            refreshes: { type: array, items: { $ref: "#/$defs/Address" } }
-        concurrency: { enum: [parallel, serial] }
-        clearAnswerOn: { type: array, items: { type: string } }
-        style: { $ref: "#/$defs/Style" }
-        shown: { $ref: "#/$defs/Shown" }
-        fill: { type: boolean }
-    # An operation run with bound inputs: the action, what it sends, and how a
-    # press is asked and allowed. The action's own `enabled` is its form's.
-    BoundAction:
-      type: object
-      additionalProperties: false
-      required: [action, inputs]
-      properties:
-        action: { $ref: "#/$defs/Action" }
+        mutation: { $ref: "telo:Ui/MutationSpec" }
         inputs: { type: object, additionalProperties: { $ref: "#/$defs/Binding" } }
+        label: { $ref: "#/$defs/NodeText" }
         # Present when the press asks first.
         confirm: { $ref: "#/$defs/NodeText" }
-        # Present when the press opens a dialog that enters these fields of the
-        # action's input model before anything is sent.
-        prompt:
-          type: object
-          additionalProperties: false
-          required: [fields]
-          properties: { fields: { type: array, items: { $ref: "#/$defs/Field" } } }
+        prompt: { $ref: "#/$defs/Prompt" }
         enabled: { $ref: "#/$defs/Enablement" }
+        onSuccess: { type: array, items: { $ref: "telo:Ui/EffectSpec" } }
+        # Present when something is drawn of a success.
+        result: { $ref: "#" }
+        failure: { $ref: "#" }
+    # A form's submit write: a call with no prompt and no effects of its own,
+    # since the form fills the entries and its `onSuccess` follows the write.
+    FormSubmit:
+      type: object
+      additionalProperties: false
+      required: [mutation, inputs, label, failure]
+      properties:
+        mutation: { $ref: "telo:Ui/MutationSpec" }
+        inputs: { type: object, additionalProperties: { $ref: "#/$defs/Binding" } }
+        label: { $ref: "#/$defs/Text" }
+        # Present when the press asks first.
+        confirm: { $ref: "#/$defs/NodeText" }
+        enabled: { $ref: "#/$defs/Enablement" }
+        # Present when something is drawn of a success.
+        result: { $ref: "#" }
+        failure: { $ref: "#" }
+    # A form's autosave write, never pressed: sent when the values settle,
+    # `debounce` milliseconds after typing stops.
+    FormAutosave:
+      type: object
+      additionalProperties: false
+      required: [mutation, inputs, debounce, failure]
+      properties:
+        mutation: { $ref: "telo:Ui/MutationSpec" }
+        inputs: { type: object, additionalProperties: { $ref: "#/$defs/Binding" } }
+        debounce: { type: integer, minimum: 0 }
+        result: { $ref: "#" }
+        failure: { $ref: "#" }
+    # A layout's move: a call with no label and no result.
+    Move:
+      type: object
+      additionalProperties: false
+      required: [mutation, inputs, prompt, onSuccess, failure]
+      properties:
+        mutation: { $ref: "telo:Ui/MutationSpec" }
+        inputs: { type: object, additionalProperties: { $ref: "#/$defs/Binding" } }
+        confirm: { $ref: "#/$defs/NodeText" }
+        prompt: { $ref: "#/$defs/Prompt" }
+        enabled: { $ref: "#/$defs/Enablement" }
+        onSuccess: { type: array, items: { $ref: "telo:Ui/EffectSpec" } }
+        failure: { $ref: "#" }
     # A condition deciding whether a button can be pressed, and why not.
     Enablement:
       type: object
@@ -2312,6 +2403,47 @@ schema:
         href: { $ref: "telo:Ui/SpecNode#/$defs/Address" }
         surface: { $ref: "telo:Ui/SurfaceSpec" }
         keepsSurface: { type: boolean }
+---
+# What follows a success, as a renderer receives it: one branch per kind of
+# effect, today a destination.
+kind: Telo.JsonSchema
+metadata: { name: EffectSpec }
+schema:
+  anyOf:
+    - { $ref: "telo:Ui/DestinationSpec" }
+---
+# What a call asks before it runs, as a renderer receives it: `schema` the
+# shape of the entries, `fields` and `groups` what enters them.
+kind: Telo.JsonSchema
+metadata: { name: PromptSpec }
+schema:
+  type: object
+  additionalProperties: false
+  required: [schema, fields, groups]
+  properties:
+    schema: { type: object }
+    fields: { type: array, items: { $ref: "telo:Ui/SpecNode#/$defs/Field" } }
+    groups: { type: array, items: { $ref: "telo:Ui/SpecNode#/$defs/Group" } }
+---
+# One write as a renderer receives it, every member present: `id` the
+# declaration's identity, so every call of it shares one `concurrency` queue;
+# `answer` what a success's body is held to, present when declared; `consumed`
+# the input properties the url reads whole, which the body leaves out.
+kind: Telo.JsonSchema
+metadata: { name: MutationSpec }
+schema:
+  type: object
+  additionalProperties: false
+  required: [id, schema, method, url, consumed, invalidates, concurrency]
+  properties:
+    id: { type: string }
+    schema: { type: object }
+    answer: { type: object }
+    method: { enum: [POST, PUT, PATCH, DELETE] }
+    url: { $ref: "telo:Ui/SpecNode#/$defs/Address" }
+    consumed: { type: array, items: { type: string } }
+    invalidates: { type: array, items: { $ref: "telo:Ui/SpecNode#/$defs/Address" } }
+    concurrency: { enum: [parallel, serial] }
 ---
 # What pressing a region or a record does, as a renderer receives it: where it
 # goes, and the text naming the press — a text, or a text with its values.
@@ -3480,14 +3612,26 @@ schema:
 # withheld. A merge-form destination kind inherits the roots from here.
 kind: Telo.Abstract
 metadata:
+  name: Effect
+  description: >-
+    What happens once a write succeeds, after what it draws: go to another
+    address or open a page over the current one. Effects run in the order
+    written, each after the one before has happened, and still run when the
+    surface that made the call has closed.
+capability: Telo.Provider
+outputType: !ref EffectSpec
+---
+kind: Telo.Abstract
+metadata:
   name: Destination
   description: >-
     Where pressing a link, a menu item, a table cell or a navigation entry
-    goes, or where an action leads on success: another address, or a page
+    goes, or where a write leads on success: another address, or a page
     opened over the current one in a dialog, drawer, popover, inline surface
     or panel. Provides the address and how
     it opens, resolved in the browser from the values in scope.
 capability: Telo.Provider
+extends: Self.Effect
 outputType: !ref DestinationSpec
 schema:
   type: object
@@ -4015,9 +4159,11 @@ metadata: { name: QuerySpec }
 schema:
   type: object
   additionalProperties: false
-  required: [id, schema, method, url, input, query, reloadOn]
+  required: [id, schema, method, url, input, query, form, reloadOn]
   properties:
     id: { type: string }
+    # The id of the form whose settled record the url and body read as `form`; null when none.
+    form: { type: [string, "null"] }
     schema: { type: object }
     method: { enum: [GET, QUERY, POST] }
     url: { $ref: "telo:Ui/SpecNode#/$defs/Address" }
@@ -4068,6 +4214,7 @@ schema:
     properties:
       query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
       params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
+      form: { x-telo-context-eval: accessor, x-telo-context-ref-from: form/model, x-telo-context-withheld: "the query names no form in `form`." }
   examples:
     - model:
         kind: Telo.JsonSchema
@@ -4089,6 +4236,13 @@ schema:
         filled from `query` and `params` with query parameters appended. A
         value that holds nothing leaves the read unsent.
       $ref: "telo://Self/RequestTarget"
+    form:
+      title: Form
+      description: >-
+        The form whose settled, valid record the read follows, read as `form`
+        in `url` and `input.body` and in the trees of every query node drawing
+        this query. Until the form first holds a valid record nothing is sent.
+      x-telo-ref: { kind: Self.Form, use: schema }
     input:
       title: Input
       description: >-
@@ -4137,6 +4291,113 @@ schema:
         How often the answer is read again while a node drawing it is shown, at
         least `5s`. Omitted, it is not read on a timer.
       x-telo-type: { name: Telo.Duration, minimum: 5s }
+---
+kind: Telo.Definition
+metadata:
+  name: Mutation
+  description: >-
+    A write a page declares once and buttons, row actions, annotations,
+    layouts and forms run: the record it takes, the shape of a success's
+    answer, the POST, PUT, PATCH or DELETE request it sends — to a path filled
+    from the input, the rest of the input as the JSON body — the reads it
+    invalidates, and whether its calls run in parallel or one at a time across
+    the page. Draws nothing itself.
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#MutationController]
+# What a call site naming a mutation hands it: a record of its input model.
+inputType: { type: object, x-telo-value-schema-from: inputModel }
+schema:
+  type: object
+  additionalProperties: false
+  required: [inputModel, url]
+  examples:
+    - inputModel:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [month]
+          properties: { month: { type: string, title: Month, pattern: "^[0-9]{4}-[0-9]{2}$" } }
+      outputModel:
+        kind: Telo.JsonSchema
+        schema: { type: object, required: [id], properties: { id: { type: string } } }
+      url: /api/reports
+      invalidates: [/api/reports]
+  properties:
+    inputModel:
+      title: Input model
+      description: The shape of the record a call sends; its properties not read by `url` are the JSON body.
+      x-telo-ref: { kind: Telo.Type, use: schema }
+    outputModel:
+      title: Output model
+      description: >-
+        The shape of a success's body, read as `result`. A success's body is
+        held to it before anything is drawn from it.
+      x-telo-ref: { kind: Telo.Type, use: schema }
+    method:
+      title: Method
+      description: >-
+        `POST`, `PUT` and `PATCH` send the input's remaining properties as a
+        JSON body; `DELETE` sends none and must read every input property in
+        its `url`. A read has no mutation.
+      enum: [POST, PUT, PATCH, DELETE]
+      default: POST
+    url:
+      title: URL
+      description: >-
+        Where the request goes, over `input`. An input property read whole
+        (`input.<property>`) travels in the url and stays out of the body. A
+        value that holds nothing leaves the press unsent.
+      $ref: "telo://Self/RequestTarget"
+      x-telo-context:
+        type: object
+        properties:
+          input: { x-telo-context-from-root: "inputModel", x-telo-context-eval: accessor }
+    invalidates:
+      title: Invalidates
+      description: >-
+        Requests read again after a success, over `input` and `result`: every
+        reader whose `url` and every listing whose collection source's
+        `basePath` resolves to one of their paths.
+      type: array
+      items: { $ref: "telo://Self/InvalidationTarget" }
+      x-telo-context:
+        type: object
+        properties:
+          result:
+            x-telo-context-from-root: "outputModel"
+            x-telo-context-eval: accessor
+            type: object
+            properties: {}
+            additionalProperties: false
+          input: { x-telo-context-from-root: "inputModel", x-telo-context-eval: accessor }
+    concurrency:
+      title: Concurrency
+      description: >-
+        Whether calls of this mutation run at once (`parallel`) or one after
+        another in the order they were made on the page (`serial`), across
+        every place that runs it. Either way a button, or one row, takes no
+        press while its last is pending.
+      enum: [parallel, serial]
+      default: parallel
+  x-telo-resource-rules:
+    - resolve: [/inputModel]
+      condition: !cel >-
+        !has(self.method) || self.method != 'DELETE'
+        || cel.bind(m, has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel,
+          !has(m.properties) || m.properties.all(k,
+            type(self.url) != string && (
+              (has(self.url.pathParams) && self.url.pathParams.exists(n,
+                'root' in self.url.pathParams[n] && self.url.pathParams[n].root == 'input'
+                && self.url.pathParams[n].path == [k]))
+              || (has(self.url.queryParams) && self.url.queryParams.exists(n,
+                'root' in self.url.queryParams[n] && self.url.queryParams[n].root == 'input'
+                && self.url.queryParams[n].path == [k])))))
+      code: UI_MUTATION_INPUT_UNSENT
+      message: >-
+        is a `DELETE`, which sends no body, yet leaves an input property out of
+        its `url`. Read every property of `inputModel` in a `pathParams` or
+        `queryParams` entry as exactly `input.<property>`, or remove it from
+        `inputModel`.
 ---
 # A collection as the browser reaches it: what it is and where its list
 # endpoint is. It carries no relations, so an option source reading it can
@@ -4362,14 +4623,14 @@ schema:
             anyOf:
               - { pattern: "^_telo" }
               - { enum: [as, break, const, continue, else, "false", for, function, if, import, in, let, loop, namespace, "null", package, return, "true", var, void, while] }
-    refreshes:
-      title: Refreshes
+    invalidates:
+      title: Invalidates
       description: >-
         Requests read again, over `conversation.id`, when a send is admitted and
         when a turn the chat started or followed ends: every reader whose path
         resolves to one of theirs, a listing of conversations among them.
       type: array
-      items: { $ref: "telo://Self/RefreshTarget" }
+      items: { $ref: "telo://Self/InvalidationTarget" }
       x-telo-context:
         type: object
         properties:
@@ -4701,6 +4962,13 @@ schema:
       title: Model
       description: The shape of one record.
       x-telo-ref: { kind: Telo.Type, use: schema }
+    form:
+      title: Form
+      description: >-
+        The form whose settled, valid record `filters` and the row actions read
+        as `form`. While it has never held a valid record the listing reads
+        nothing.
+      x-telo-ref: { kind: Self.Form, use: schema }
     filters:
       title: Filters
       description: >-
@@ -4713,6 +4981,7 @@ schema:
         properties:
           query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
           params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
+          form: { x-telo-context-eval: accessor, x-telo-context-ref-from: form/model, x-telo-context-withheld: "the listing names no form in `form`." }
       additionalProperties:
         type: [string, number, integer, boolean]
         x-telo-eval: accessor
@@ -4859,7 +5128,8 @@ schema:
           row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
           query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
           params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
-      items: { $ref: "telo://Self/BoundAction" }
+          form: { x-telo-context-eval: accessor, x-telo-context-ref-from: form/model, x-telo-context-withheld: "the listing names no form in `form`." }
+      items: { $ref: "telo://Self/MutationCall" }
     rowActionsDisplay:
       title: Row actions display
       description: >-
@@ -5161,7 +5431,7 @@ schema:
         to" menu — over `row`, the record as read, and `to`, the record as the
         move leaves it. A success reloads the collection. Omitted, records stay
         where they are.
-      $ref: "telo://Self/BoundAction"
+      $ref: "telo://Self/Move"
       x-telo-context:
         type: object
         properties:
@@ -5276,7 +5546,7 @@ schema:
         to" menu — over `row`, the record as read, and `to`, the record as the
         move leaves it. A success reloads the collection. Omitted, records stay
         where they are.
-      $ref: "telo://Self/BoundAction"
+      $ref: "telo://Self/Move"
       x-telo-context:
         type: object
         properties:
@@ -5375,7 +5645,7 @@ schema:
         to" menu — over `row`, the record as read, and `to`, the record as the
         move leaves it. A success reloads the collection. Omitted, records stay
         where they are.
-      $ref: "telo://Self/BoundAction"
+      $ref: "telo://Self/Move"
       x-telo-context:
         type: object
         properties:
@@ -5517,7 +5787,7 @@ schema:
         to" menu — over `row`, the record as read, and `to`, the record as the
         move leaves it. A success reloads the collection. Omitted, records stay
         where they are.
-      $ref: "telo://Self/BoundAction"
+      $ref: "telo://Self/Move"
       x-telo-context:
         type: object
         properties:
@@ -5619,7 +5889,7 @@ schema:
         to" menu — over `row`, the record as read, and `to`, the record as the
         move leaves it. A success reloads the collection. Omitted, records stay
         where they are.
-      $ref: "telo://Self/BoundAction"
+      $ref: "telo://Self/Move"
       x-telo-context:
         type: object
         properties:
@@ -5755,14 +6025,23 @@ metadata:
     against the model's own rules before anything is sent, with the server's
     field errors shown beside the fields they name. Creates a record, or edits
     the stored one it names, starting from a record it is given; says what
-    happens to unsaved input and once the record is saved.
+    happens to unsaved input and once the record is saved. Without a
+    collection it runs a write instead — on submit, or saved as values settle —
+    or is only read by the queries and listings that follow it.
 capability: Telo.Provider
 extends: Self.Composite
 controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#FormController]
 schema:
   type: object
   additionalProperties: false
-  required: [model, record]
+  required: [model]
+  # A record editor, a mutation form or a free-standing one: `record` describes
+  # a collection write that `onSubmit` and `autosave` replace.
+  allOf:
+    - { not: { required: [record, onSubmit] } }
+    - { not: { required: [record, autosave] } }
+    - if: { not: { anyOf: [{ required: [record] }, { required: [onSubmit] }] } }
+      then: { not: { anyOf: [{ required: [onSuccess] }, { required: [afterSubmit] }] } }
   properties:
     model:
       title: Model
@@ -5774,7 +6053,9 @@ schema:
         The collection the record belongs to, and the stored record the form
         edits. Without `key` the form creates a record, sent to the
         collection's `schemas.create`; with it, the form changes that record, a
-        merge patch sent to `schemas.update`.
+        merge patch sent to `schemas.update`. Omitted, the form has no
+        collection: no relation pickers and no default write. Excludes
+        `onSubmit` and `autosave`.
       type: object
       additionalProperties: false
       required: [presentation]
@@ -5863,7 +6144,159 @@ schema:
         Where the values entered are kept between visits. Omitted, they are
         not kept.
       $ref: "telo://Self/StateRecord"
+    onSubmit:
+      title: On submit
+      description: >-
+        The write run when the form is submitted, in place of a collection
+        write: the mutation, the record it is sent from the form's `values`,
+        and what is drawn of its answer beneath the fields. Excludes `record`.
+      type: object
+      additionalProperties: false
+      required: [mutation, inputs]
+      properties:
+        mutation: { $ref: "telo://Self/MutationCall#/properties/mutation" }
+        inputs:
+          title: Inputs
+          description: >-
+            What the mutation receives, by input property: a path into `values`
+            or a root where the form is placed, or a fixed value. Every input
+            the mutation requires is bound. An input reading a hidden or empty
+            field is left out of the record sent.
+          type: object
+          x-telo-context: &writeRoots
+            type: object
+            properties:
+              values: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
+              query: { x-telo-context-eval: accessor, x-telo-context-from-referrer: query, x-telo-context-withheld: a form reads only the roots bound where it is placed }
+              params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, x-telo-context-withheld: a form reads only the roots bound where it is placed }
+          additionalProperties: { x-telo-eval: accessor }
+        label:
+          title: Label
+          description: The submit button's accessible name. Omitted, the text `save`.
+          $ref: "telo://Self/MutationCall#/properties/label"
+        confirm: { $ref: "telo://Self/MutationCall#/properties/confirm" }
+        enabled:
+          title: Enabled
+          description: >-
+            When the button can be pressed, over the form's current `values`,
+            and the reason shown while it cannot. Omitted, it always can.
+          $ref: "telo://Self/Enablement"
+          x-telo-context:
+            type: object
+            properties: { values: { x-telo-context-from-root: "model", x-telo-context-eval: accessor } }
+        result:
+          title: Result
+          description: >-
+            What is drawn beneath the fields of a success, over `result`, `input`
+            (the record sent) and `values`. Omitted, a success draws nothing.
+          $ref: "telo://Self/Node"
+          x-telo-context: &answerRoots
+            type: object
+            properties:
+              request: { $ref: "telo://Self/MutationCall#/$defs/CallRequest" }
+              result: { x-telo-context-eval: accessor, x-telo-context-ref-from: mutation/outputModel, type: object, properties: {}, additionalProperties: false }
+              input: { x-telo-context-eval: accessor, x-telo-context-ref-from: mutation/inputModel }
+              values: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
+        failure:
+          title: Failure
+          description: >-
+            What is drawn beneath the fields when the write does not succeed,
+            over `error`, `input` and `values`. Omitted, the error's code and
+            message.
+          $ref: "telo://Self/Node"
+          x-telo-context:
+            type: object
+            properties:
+              request: { $ref: "telo://Self/MutationCall#/$defs/CallRequest" }
+              error: { x-telo-context-eval: accessor, $ref: "telo://Self/RequestError" }
+              input: { x-telo-context-eval: accessor, x-telo-context-ref-from: mutation/inputModel }
+              values: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
+    autosave:
+      title: Autosave
+      description: >-
+        The write sent as the values settle, once the record is valid against
+        the mutation's input model and differs from the last one saved. It must
+        replace — a `PUT`, or a `PATCH` sending the whole record — since a
+        failed write is sent again. Excludes `record`.
+      type: object
+      additionalProperties: false
+      required: [mutation, inputs]
+      properties:
+        mutation: { $ref: "telo://Self/MutationCall#/properties/mutation" }
+        inputs:
+          title: Inputs
+          description: >-
+            What the mutation receives, by input property: a path into `values`
+            or a root where the form is placed, or a fixed value. Every input
+            the mutation requires is bound.
+          type: object
+          x-telo-context: *writeRoots
+          additionalProperties: { x-telo-eval: accessor }
+        debounce:
+          title: Debounce
+          description: How long typing must pause before the record is sent. A choice or a commit is sent at once.
+          x-telo-type: { name: Telo.Duration, minimum: 0s }
+          default: 300ms
+        result:
+          title: Result
+          description: Drawn beneath the fields of a success, over `result`, `input` and `values`. Omitted, nothing is drawn.
+          $ref: "telo://Self/Node"
+          x-telo-context: *answerRoots
+        failure:
+          title: Failure
+          description: >-
+            Drawn beneath the fields when the write does not succeed, with a
+            retry button, over `error`, `input` and `values`. Omitted, the
+            error's code and message.
+          $ref: "telo://Self/Node"
+          x-telo-context:
+            type: object
+            properties:
+              request: { $ref: "telo://Self/MutationCall#/$defs/CallRequest" }
+              error: { x-telo-context-eval: accessor, $ref: "telo://Self/RequestError" }
+              input: { x-telo-context-eval: accessor, x-telo-context-ref-from: mutation/inputModel }
+              values: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
+    onSuccess:
+      title: On success
+      description: >-
+        Effects run in order once the submit write succeeds — the default
+        collection write or `onSubmit` — after `afterSubmit`, over `values` and
+        `result`: the mutation's answer, or the stored record the collection
+        answered with. Needs `record` or `onSubmit`.
+      type: array
+      items: { x-telo-ref: { kind: Self.Effect, use: dependency } }
+      x-telo-context:
+        type: object
+        properties:
+          values: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
+          result:
+            x-telo-context-eval: accessor
+            x-telo-context-ref-from: [onSubmit/mutation/outputModel, record/presentation/source/collection/model]
+            type: object
+            properties: {}
+            additionalProperties: false
+    clearAnswerOn:
+      title: Clear answer on
+      description: Properties whose change clears what the writes drew of their last answers. A new write always clears them.
+      type: array
+      uniqueItems: true
+      items: { type: string }
   x-telo-resource-rules:
+    - resolve: [/autosave/mutation]
+      condition: !cel "!has(self.autosave) || (has(self.autosave.mutation.method) && self.autosave.mutation.method != 'POST')"
+      code: UI_FORM_AUTOSAVE_NOT_IDEMPOTENT
+      message: >-
+        autosaves over a mutation whose method is `POST`, which creates a record
+        each time the values settle or a failed write is sent again. Autosave a
+        `PUT`, or a `PATCH` sending the whole record, or run the `POST` from
+        `onSubmit`.
+    - resolve: [/model]
+      in: /clearAnswerOn
+      condition: !cel "has((has(self.model.schema) ? self.model.schema : self.model).properties) && this in (has(self.model.schema) ? self.model.schema : self.model).properties"
+      code: UI_FORM_CLEAR_UNKNOWN_PROPERTY
+      message: >-
+        clears its answers on a property the model does not declare, which
+        never changes. Use a property of `model`, or remove this entry.
     - resolve: [/record/presentation/source/collection]
       condition: !cel >-
         !has(self.record) || (has(self.record.presentation.source.collection.schemas)
@@ -5881,7 +6314,8 @@ schema:
     # extends one path through the collection.
     - resolve: [/model, /record/presentation/source/collection, /record/presentation/source/collection/schemas/create]
       condition: !cel >-
-        !has(self.record) || !has(self.model) || has(self.record.key) || !has(self.record.presentation.source.collection.schemas.create)
+        !has(self.record) || !has(self.model) || has(self.record.key) || !has(self.record.presentation.source.collection.schemas)
+        || !has(self.record.presentation.source.collection.schemas.create)
         || !has(self.record.presentation.source.collection.schemas.create.schema.properties)
         || cel.bind(m, has(self.model.schema) ? self.model.schema : self.model,
            cel.bind(wp, self.record.presentation.source.collection.schemas.create.schema.properties,
@@ -5981,111 +6415,42 @@ schema:
 ---
 kind: Telo.Definition
 metadata:
-  name: Action
+  name: Prompt
   description: >-
-    A button that runs a server operation from a page with a POST, PUT, PATCH
-    or DELETE request, with an optional input form generated from the
-    request's data model and validated before anything is sent. Input
-    properties can fill the request path or query instead of the body. Draws the answer as content — generated files, report links,
-    search hits — and a refusal as an error, then goes to another page or
-    refreshes data on success; presses run in parallel or one at a time. Data grids and lists
-    offer one on every row.
+    The dialog a button, row action or move opens to ask for entries before it
+    runs its write — a reason, a note, a choice — generated from a data model
+    as a form is: a labelled control per property, validated in the browser
+    before anything is sent. The entries are read by the call's inputs.
 capability: Telo.Provider
-extends: Self.Composite
-controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ActionController]
-# What a call site naming an action hands it: a record of its input model.
-inputType: { type: object, x-telo-value-schema-from: inputModel }
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#PromptController]
 schema:
   type: object
   additionalProperties: false
-  required: [inputModel, request, label]
+  required: [model]
   examples:
-    - inputModel:
+    - model:
         kind: Telo.JsonSchema
         schema:
           type: object
-          required: [month]
-          properties:
-            month: { type: string, title: Month, pattern: "^[0-9]{4}-[0-9]{2}$" }
-            formats: { type: array, title: Formats, items: { enum: [pdf, csv] } }
-      outputModel:
-        kind: Telo.JsonSchema
-        schema:
-          type: object
-          required: [files]
-          properties:
-            files:
-              type: array
-              items:
-                type: object
-                properties:
-                  name: { type: string, title: File }
-                  url: { type: string, title: Download, format: uri-reference }
-      request: { target: /api/reports }
-      label: Generate
-      result:
-        type: list
-        heading: Files
-        rows: !cel "result.files"
-        columns:
-          - value: !cel "row.name"
-          - value: !cel "row.url"
-      onSuccess: { refreshes: [/api/reports] }
+          required: [note]
+          properties: { note: { type: string, title: Note, minLength: 1 } }
   properties:
-    inputModel:
-      title: Input model
-      description: The shape of the record sent as the request body.
+    model:
+      title: Model
+      description: The shape of what is entered, read by the call's inputs as `prompt`.
       x-telo-ref: { kind: Telo.Type, use: schema }
-    outputModel:
-      title: Output model
-      description: >-
-        The shape of the answer, read as `result`. A success's body is held to
-        it before anything is drawn from it.
-      x-telo-ref: { kind: Telo.Type, use: schema }
-    request:
-      title: Request
-      description: >-
-        The request a press sends: the HTTP `method` and the `target` it goes
-        to. A `target` parameter reads the record sent as `input`; an input
-        property read whole (`input.<property>`) travels in the target and
-        stays out of the body.
-      type: object
-      additionalProperties: false
-      required: [target]
-      properties:
-        method:
-          title: Method
-          description: >-
-            `POST`, `PUT` and `PATCH` send the input's remaining properties as a
-            JSON body; `DELETE` sends none and must read every input property in
-            its target.
-          enum: [POST, PUT, PATCH, DELETE]
-          default: POST
-        target:
-          title: Target
-          description: Where the request goes, over `input`. A value that holds nothing leaves the press unsent.
-          $ref: "telo://Self/RequestTarget"
-          x-telo-context:
-            type: object
-            properties:
-              input: { x-telo-context-from-root: "inputModel", x-telo-context-eval: accessor }
-    label:
-      title: Label
-      description: The text of the button that runs the operation.
-      $ref: "telo://manifest#/$defs/Text"
-      x-telo-text-values: {}
     fields:
       title: Fields
       description: >-
-        The fields, top to bottom: a property name, entered as the input model
-        says, or a field kind. Omitted, every input model property a control
-        can enter: a scalar, or a list of scalars.
+        The fields, top to bottom: a property name, entered as the model says,
+        or a field kind. Omitted, every model property a control can enter: a
+        scalar, or a list of scalars.
       type: array
       x-telo-context:
         type: object
         properties:
           values:
-            x-telo-context-from-root: "inputModel"
+            x-telo-context-from-root: "model"
             x-telo-context-eval: accessor
             x-telo-context-item-fills: ["", "/property"]
       items:
@@ -6105,172 +6470,43 @@ schema:
       type: array
       x-telo-context:
         type: object
-        properties:
-          values: { x-telo-context-from-root: "inputModel", x-telo-context-eval: accessor }
+        properties: { values: { x-telo-context-from-root: "model", x-telo-context-eval: accessor } }
       items: { $ref: "telo://Self/FieldGroup" }
-    state:
-      title: State
-      description: >-
-        Where the values entered are kept between visits. Omitted, they are
-        not kept.
-      $ref: "telo://Self/StateRecord"
-    enabled:
-      title: Enabled
-      description: >-
-        When the button can be pressed, over the form's current `values`, and
-        the reason shown while it cannot. Omitted, it always can.
-      $ref: "telo://Self/Enablement"
-      x-telo-context:
-        type: object
-        properties:
-          values: { x-telo-context-from-root: "inputModel", x-telo-context-eval: accessor }
-    result:
-      title: Result
-      description: >-
-        What is drawn from a success, over `result` (the answer), `input` (the
-        record sent) and `values` (the form's current values). Omitted, a
-        success draws nothing.
-      $ref: "telo://Self/Node"
-      x-telo-context:
-        type: object
-        properties:
-          request: { $ref: "telo://Self/Node#/$defs/CompositeRequest", x-telo-context-eval: runtime }
-          result:
-            x-telo-context-from-root: "outputModel"
-            x-telo-context-eval: accessor
-            type: object
-            properties: {}
-            additionalProperties: false
-          input: { x-telo-context-from-root: "inputModel", x-telo-context-eval: accessor }
-          values: { x-telo-context-from-root: "inputModel", x-telo-context-eval: accessor }
-    failure:
-      title: Failure
-      description: >-
-        What is drawn when the operation does not succeed — any answer but a
-        2xx, no answer at all, or a 2xx body the output model refuses — over
-        `error`, `input` and `values`. Omitted, the error's code and message.
-      $ref: "telo://Self/Node"
-      x-telo-context:
-        type: object
-        properties:
-          request: { $ref: "telo://Self/Node#/$defs/CompositeRequest", x-telo-context-eval: runtime }
-          error: { x-telo-context-eval: accessor, $ref: "telo://Self/RequestError" }
-          input: { x-telo-context-from-root: "inputModel", x-telo-context-eval: accessor }
-          values: { x-telo-context-from-root: "inputModel", x-telo-context-eval: accessor }
-    onSuccess:
-      title: On success
-      description: What happens once the operation succeeds, besides drawing `result`.
-      type: object
-      additionalProperties: false
-      properties:
-        to:
-          title: To
-          description: >-
-            Where a success goes, a destination over `result` and `input`. One
-            reading `result` makes the success's body read; an address that
-            does not resolve goes nowhere.
-          x-telo-ref: { kind: Self.Destination, use: dependency }
-          x-telo-context:
-            type: object
-            properties:
-              result:
-                x-telo-context-from-root: "outputModel"
-                x-telo-context-eval: accessor
-                type: object
-                properties: {}
-                additionalProperties: false
-              input: { x-telo-context-from-root: "inputModel", x-telo-context-eval: accessor }
-        refreshes:
-          title: Refreshes
-          description: >-
-            Requests read again, over `input` and `result`: every reader whose
-            `source` and every listing whose collection source's `basePath`
-            resolves to one of their paths.
-          type: array
-          items: { $ref: "telo://Self/RefreshTarget" }
-          x-telo-context:
-            type: object
-            properties:
-              result:
-                x-telo-context-from-root: "outputModel"
-                x-telo-context-eval: accessor
-                type: object
-                properties: {}
-                additionalProperties: false
-              input: { x-telo-context-from-root: "inputModel", x-telo-context-eval: accessor }
-    concurrency:
-      title: Concurrency
-      description: >-
-        Whether presses of this action run at once (`parallel`) or one after
-        another in the order they were made on this page (`serial`). Either
-        way the form, or one row, takes no press while its last is pending.
-      enum: [parallel, serial]
-      default: parallel
-    clearAnswerOn:
-      title: Clear answer on
-      description: >-
-        Input properties whose change clears what was drawn from the last
-        answer. A new submission always clears it.
-      type: array
-      uniqueItems: true
-      items: { type: string }
   x-telo-resource-rules:
-    - resolve: [/inputModel]
-      condition: !cel >-
-        !has(self.request.method) || self.request.method != 'DELETE'
-        || cel.bind(m, has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel,
-          !has(m.properties) || m.properties.all(k,
-            type(self.request.target) != string && (
-              (has(self.request.target.pathParams) && self.request.target.pathParams.exists(n,
-                'root' in self.request.target.pathParams[n] && self.request.target.pathParams[n].root == 'input'
-                && self.request.target.pathParams[n].path == [k]))
-              || (has(self.request.target.queryParams) && self.request.target.queryParams.exists(n,
-                'root' in self.request.target.queryParams[n] && self.request.target.queryParams[n].root == 'input'
-                && self.request.target.queryParams[n].path == [k])))))
-      code: UI_ACTION_INPUT_UNSENT
-      message: >-
-        is a `DELETE`, which sends no body, yet leaves an input property out of
-        its target. Read every property of `inputModel` in a `pathParams` or
-        `queryParams` entry as exactly `input.<property>`, or remove it from
-        `inputModel`.
-    - resolve: [/inputModel]
-      in: /clearAnswerOn
-      condition: !cel "has((has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).properties) && this in (has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).properties"
-      code: UI_ACTION_CLEAR_UNKNOWN_PROPERTY
-      message: >-
-        clears its answer on a property the input model does not declare, which
-        never changes. Use a property of `inputModel`, or remove this entry.
-    - resolve: [/inputModel, /fields]
+    - resolve: [/model, /fields]
       in: /fields
       condition: !cel >-
-        cel.bind(m, has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel,
+        !has(self.model) ||
+        cel.bind(m, has(self.model.schema) ? self.model.schema : self.model,
           has(m.properties) && (type(this) == string ? this : this.property) in m.properties)
       code: UI_FIELD_UNKNOWN_PROPERTY
       message: >-
-        lists a field for a property the input model does not declare. Use a property
-        of `inputModel`, or add this one to it.
-    - resolve: [/inputModel]
+        lists a field for a property the model does not declare. Use a property
+        of `model`, or add this one to it.
+    - resolve: [/model]
       in: /fields
       condition: !cel >-
-        cel.bind(m, has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel,
+        !has(self.model) ||
+        cel.bind(m, has(self.model.schema) ? self.model.schema : self.model,
           type(this) != string || !has(m.properties) || !(this in m.properties)
           || Self.controlFits('auto', m.properties[this], null))
       code: UI_FIELD_UNSUPPORTED
       message: >-
         lists a property no control can enter. A property name enters a
         string, a number, a boolean, one of an `enum`, or a list of those:
-        remove it, give `inputModel` a property of such a type, or name a field
+        remove it, give `model` a property of such a type, or name a field
         kind that enters it.
-    - resolve: [/inputModel, /fields]
+    - resolve: [/model, /fields]
       condition: !cel >-
-        cel.bind(m, has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel,
+        !has(self.model) ||
+        cel.bind(m, has(self.model.schema) ? self.model.schema : self.model,
           !has(m.required) || m.required.all(r,
             has(self.fields)
               ? self.fields.exists(e, (type(e) == string ? e : e.property) == r)
               : has(m.properties) && r in m.properties && Self.controlFits('auto', m.properties[r], null)))
       code: UI_FIELD_REQUIRED_NOT_ENTERED
       message: >-
-        leaves a property the input model requires with no field, so a valid record
+        leaves a property the model requires with no field, so a valid record
         could never be sent. List a field for every required property, or leave
         `fields` out where each one is a scalar or a list of scalars.
     - resolve: [/fields]
@@ -6306,19 +6542,6 @@ schema:
       message: >-
         is named by fields that are not listed one after another. A group is
         drawn where its fields are: list them together.
-    # Anchored at the resource: `in:` cannot reach into a named shape.
-    - resolve: [/inputModel, /fields]
-      condition: !cel >-
-        cel.bind(m, has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel,
-          !has(self.state) || !has(self.state.fields) || self.state.fields.all(k,
-            has(self.fields)
-              ? self.fields.exists(e, (type(e) == string ? e : e.property) == k)
-              : has(m.properties) && k in m.properties && Self.controlFits('auto', m.properties[k], null)))
-      code: UI_STATE_FIELD_UNKNOWN
-      message: >-
-        keeps a property under `state.fields` no field shows. Name only
-        properties the fields enter, or leave `state.fields` out to keep every
-        one.
 ---
 kind: Telo.Definition
 metadata:
@@ -6752,10 +6975,10 @@ schema:
         needs one plain value or a list of them; `select` and `options` need an
         `enum` or a boolean, `toggle` a boolean, `slider` a number declaring
         `minimum` and `maximum`, and `tags` a list.
-    - referrer: Self.Action
-      resolve: [/inputModel]
+    - referrer: Self.Prompt
+      resolve: [/model]
       condition: !cel >-
-        cel.bind(m, (has(referrer.inputModel.schema) ? referrer.inputModel.schema : referrer.inputModel),
+        cel.bind(m, (has(referrer.model.schema) ? referrer.model.schema : referrer.model),
           !has(m.properties) || !(self.property in m.properties)
           || Self.controlFits(has(self.control) ? self.control : 'auto', m.properties[self.property], null))
       code: UI_FIELD_CONTROL_UNSUPPORTED
@@ -6809,10 +7032,10 @@ schema:
         asks for a control a choice cannot be drawn with, or for a property no
         choice can enter. A choice is a `select` list or `options` side by side,
         over a string, a number, a boolean, or a list of those.
-    - referrer: Self.Action
-      resolve: [/inputModel]
+    - referrer: Self.Prompt
+      resolve: [/model]
       condition: !cel >-
-        cel.bind(m, (has(referrer.inputModel.schema) ? referrer.inputModel.schema : referrer.inputModel),
+        cel.bind(m, (has(referrer.model.schema) ? referrer.model.schema : referrer.model),
           !has(m.properties) || !(self.property in m.properties)
           || ((!has(self.control) || self.control in ['auto', 'select', 'options'])
               && Self.controlFits('auto', m.properties[self.property], null)))
@@ -6842,11 +7065,11 @@ schema:
         offers options whose value is of another type than the property holds,
         or than its items hold for a list. Make the source's `value` read a
         property of the property's type, or enter another property.
-    - referrer: Self.Action
-      resolve: [/inputModel]
+    - referrer: Self.Prompt
+      resolve: [/model]
       resolveSelf: [/options/model]
       condition: !cel >-
-        cel.bind(m, (has(referrer.inputModel.schema) ? referrer.inputModel.schema : referrer.inputModel),
+        cel.bind(m, (has(referrer.model.schema) ? referrer.model.schema : referrer.model),
         cel.bind(o, has(self.options.model.schema) ? self.options.model.schema : self.options.model,
           !has(m.properties) || !(self.property in m.properties)
           || !('root' in self.options.value) || size(self.options.value.path) != 1
@@ -6914,11 +7137,11 @@ schema:
         offers options whose value is of another type than the property holds,
         or than its items hold for a list. Make the source's `value` read a
         property of the property's type, or enter another property.
-    - referrer: Self.Action
-      resolve: [/inputModel]
+    - referrer: Self.Prompt
+      resolve: [/model]
       resolveSelf: [/options/model]
       condition: !cel >-
-        cel.bind(m, (has(referrer.inputModel.schema) ? referrer.inputModel.schema : referrer.inputModel),
+        cel.bind(m, (has(referrer.model.schema) ? referrer.model.schema : referrer.model),
         cel.bind(o, has(self.options.model.schema) ? self.options.model.schema : self.options.model,
           !has(m.properties) || !(self.property in m.properties)
           || !('root' in self.options.value) || size(self.options.value.path) != 1
@@ -7015,10 +7238,10 @@ schema:
       message: >-
         enters a property that is not a date range: an object of exactly `from`
         and `to`, each `type: string` with `format: date`.
-    - referrer: Self.Action
-      resolve: [/inputModel]
+    - referrer: Self.Prompt
+      resolve: [/model]
       condition: !cel >-
-        cel.bind(m, (has(referrer.inputModel.schema) ? referrer.inputModel.schema : referrer.inputModel),
+        cel.bind(m, (has(referrer.model.schema) ? referrer.model.schema : referrer.model),
           !has(m.properties) || !(self.property in m.properties)
           || cel.bind(p, m.properties[self.property],
              'type' in p && p.type == 'object' && 'properties' in p && type(p.properties) == map
@@ -7039,10 +7262,10 @@ schema:
       message: >-
         starts at a preset while the model gives the property a `default` too.
         Remove `initialPreset`, or the property's `default`.
-    - referrer: Self.Action
-      resolve: [/inputModel]
+    - referrer: Self.Prompt
+      resolve: [/model]
       condition: !cel >-
-        cel.bind(m, (has(referrer.inputModel.schema) ? referrer.inputModel.schema : referrer.inputModel),
+        cel.bind(m, (has(referrer.model.schema) ? referrer.model.schema : referrer.model),
           !has(self.initialPreset) || !has(m.properties) || !(self.property in m.properties)
           || !('default' in m.properties[self.property]))
       code: UI_DATE_RANGE_DEFAULT_CONFLICT
@@ -7336,6 +7559,8 @@ keys:
     description: Drawn where a listing's records would be when it has none.
   nothingFound: { message: Nothing found., description: Drawn when a search finds no record. }
   save: Save
+  saving: { message: Saving…, description: Drawn beside a form's answer while an autosave write is awaited. }
+  retry: { message: Try again, description: Sends a form's failed autosave write again. }
   cancel: Cancel
   close: Close
   newRecord:

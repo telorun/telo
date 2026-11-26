@@ -78,6 +78,8 @@ export async function loadStarterGallery(input: {
   fixedBaseUrl: string | undefined;
   version: GalleryVersion;
   catalogVersions: readonly string[];
+  /** Why the version list could not be read, named when it leaves no version. */
+  catalogFailure?: string;
 }): Promise<StarterGallery> {
   if (input.fixedBaseUrl !== undefined) {
     return { baseUrl: input.fixedBaseUrl, catalog: await fetchStarterCatalog(input.fixedBaseUrl) };
@@ -87,7 +89,9 @@ export async function loadStarterGallery(input: {
     throw new StarterGalleryUnavailableError(
       input.version === null
         ? "The starter gallery follows the telo version, which is not known yet."
-        : "The starter gallery follows the telo version, and no released version is known — the version list could not be read. Check your connection and retry.",
+        : "The starter gallery follows the telo version, and no released version is known — the version list could not be read" +
+            (input.catalogFailure ? ` (${input.catalogFailure})` : "") +
+            ". Check your connection and retry.",
     );
   }
   for (const version of candidates) {

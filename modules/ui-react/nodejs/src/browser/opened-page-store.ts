@@ -56,8 +56,8 @@ export class OpenedPageStore extends HostStore {
     }
   }
 
-  protected override askAbout(guards: UnsavedGuard[], perform: () => void): void {
-    this.application.ask(guards, perform);
+  protected override askAbout(guards: UnsavedGuard[], perform: () => void, settled?: (moved: boolean) => void): void {
+    this.application.ask(guards, perform, settled);
   }
 
   protected override write(target: Target): void {
@@ -75,18 +75,18 @@ export class OpenedPageStore extends HostStore {
     this.write({ ...location, search: withOpen(location.search, [name]) });
   }
 
-  protected override navigateTo(to: string): void {
+  protected override navigateTo(to: string): Promise<boolean> {
     const target = this.resolve(to);
     if (target.path !== this.host.location.path) return this.leaveTo(target);
-    this.request(target, () => this.write(target));
+    return this.request(target, () => this.write(target));
   }
 
-  override follow(to: string): void {
-    this.leaveTo(this.resolve(to));
+  override follow(to: string): Promise<boolean> {
+    return this.leaveTo(this.resolve(to));
   }
 
   /** Move the application, which closes the page. */
-  private leaveTo(target: Target): void {
-    this.application.go(target.path + target.search + target.hash, () => this.scope.leave(), this.pending());
+  private leaveTo(target: Target): Promise<boolean> {
+    return this.application.go(target.path + target.search + target.hash, () => this.scope.leave(), this.pending());
   }
 }

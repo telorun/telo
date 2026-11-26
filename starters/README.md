@@ -118,12 +118,6 @@ released. Then set Studio's **Starter gallery source** (Settings) to
 `--dir` / `STARTERS_DIR` nothing is copied and that directory is served as it
 is (CI serves the repository root this way).
 
-The local docker compose stack runs the same script as its `starters` service,
-at `http://starters.telo.localhost:8060`: the published-form copy, rebuilt when
-the service starts. It needs the workspace built on the host (the repository is
-bind-mounted) and registry access. Without `cli/nodejs/dist` — for `pnpm run
-starters` too — the script warns and serves the checkout's `starters/` with its
-relative imports, which Studio refuses for every starter importing a workspace
-module; run `pnpm -r --if-present build` and start again. Its Studio loads the
-gallery from there by default (`VITE_TELO_STARTERS_URL`, used as is); a source
-set in Studio's settings still wins.
+Without `cli/nodejs/dist` the script warns and serves the checkout's `starters/`
+with its relative imports, which Studio refuses for every starter importing a
+workspace module; run `pnpm -r --if-present build` and start again.

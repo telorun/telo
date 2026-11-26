@@ -17,6 +17,12 @@ export function resolveHubUrl(hubUrl: string | undefined): string {
 
 /** One kind hit surfaced by the fused lexical/vector search. */
 export interface HubMatchedKind {
+  /** `kind` declares a kind, `instance` is a ready-made instance. Absent on a
+   *  hub that predates instance hits. */
+  entry?: "kind" | "instance" | "application";
+  /** What an importer writes after its alias — the kind or the instance. */
+  name?: string;
+  /** The kind the entry is, or instantiates. */
   kind: string;
   capability: string;
   description: string;
@@ -31,13 +37,24 @@ export interface HubCategory {
   label: string;
 }
 
+/** What a result is titled: the module's own name, else the last segment of its ref. */
+export function hubHitTitle(hit: HubModuleHit): string {
+  if (hit.module.name) return hit.module.name;
+  const tail = hit.module.ref.split("/").pop() ?? hit.module.ref;
+  return tail.split("@")[0].replace(/\.ya?ml$/, "") || hit.module.ref;
+}
+
 export interface HubModuleHit {
   module: {
     ref: string;
     version: string;
+    /** The module's declared `metadata.name`; empty or absent on an older hub. */
+    name?: string;
     description: string;
     repository: string;
     license: string;
+    /** The built-in vocabulary — its kinds need no import and it cannot be one. */
+    builtin?: boolean;
     /** Declared categories. Absent on a hub that predates the facet. */
     categories?: HubCategory[];
   };
@@ -76,7 +93,23 @@ export async function searchHubModules(
     throw new Error(`Hub search failed at ${base}: HTTP ${res.status} ${res.statusText}.`);
   }
   const data = (await res.json()) as SearchModulesResponse;
-  return (data.hits ?? []).filter((h) => h.module?.ref);
+  return (data.hits ?? []).filter((h) => h.module?.ref && !h.module.builtin);
+}
+
+/** A hit's matches as chips: each kind once, each ready-made instance by its
+ *  own name. */
+export function matchChips(hit: HubModuleHit): { name: string; instance: boolean }[] {
+  const seen = new Set<string>();
+  const out: { name: string; instance: boolean }[] = [];
+  for (const match of hit.matchedKinds) {
+    const instance = match.entry === "instance";
+    const name = match.name ?? match.kind;
+    const key = `${instance}:${name}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ name, instance });
+  }
+  return out;
 }
 
 /** The hub's version lists, through the one reader every editor host shares.

@@ -49,7 +49,7 @@ placeholder: Ask anything
 starters: [Summarise this, { prompt: Explain that, onChoose: fill }, { prompt: Say hi }]
 show: { usage: false }
 conversation: { parameter: conversation }
-refreshes:
+invalidates:
   - /api/chat/conversations
   - { path: "/api/chat/conversations/{id}", pathParams: { id: !cel "conversation.id" } }
 ---
@@ -108,7 +108,7 @@ steps:
           stop: { type: text }
         composer: { actions: inside }
         conversation: null
-        refreshes: []
+        invalidates: []
         fill: false
   - name: writtenIs
     invoke: { kind: Assert.Equals }
@@ -148,7 +148,7 @@ steps:
           stop: { type: text }
         composer: { actions: inside }
         conversation: { parameter: conversation }
-        refreshes:
+        invalidates:
           - { path: { value: /api/chat/conversations }, pathParams: {}, queryParams: {} }
           - path: { value: "/api/chat/conversations/{id}" }
             pathParams: { id: { root: conversation, path: [id] } }

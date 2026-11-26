@@ -64,7 +64,23 @@ export function filledNode(node: SpecNode): SpecNode {
     if (!(PASSING_TREES[node.type] ?? []).includes(key) && isNode(node[key])) out[key] = own(node[key]);
   }
   if (Array.isArray(node.rowActions)) {
-    out.rowActions = (node.rowActions as Record<string, unknown>[]).map((entry) => (isNode(entry.action) ? { ...entry, action: own(entry.action) } : entry));
+    out.rowActions = (node.rowActions as Record<string, unknown>[]).map((entry) => ({
+      ...entry,
+      ...(isNode(entry.result) ? { result: own(entry.result) } : {}),
+      ...(isNode(entry.failure) ? { failure: own(entry.failure) } : {}),
+    }));
+  }
+  // A form's write answers are drawn beneath its fields, in boxes of their own.
+  for (const key of ["onSubmit", "autosave"]) {
+    const write = node[key];
+    if (node.type === "form" && write !== null && typeof write === "object") {
+      const entry = write as Record<string, unknown>;
+      out[key] = {
+        ...entry,
+        ...(isNode(entry.result) ? { result: own(entry.result) } : {}),
+        ...(isNode(entry.failure) ? { failure: own(entry.failure) } : {}),
+      };
+    }
   }
   out.fill = fills;
   return out as SpecNode;

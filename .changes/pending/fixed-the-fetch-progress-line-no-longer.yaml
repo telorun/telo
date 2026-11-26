@@ -1,0 +1,4 @@
+units:
+  cli: Fixed
+body: The fetch progress line no longer prints credentials, query or fragment of the
+  address it reads.

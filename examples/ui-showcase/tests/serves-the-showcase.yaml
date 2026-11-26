@@ -250,12 +250,13 @@ steps:
   - name: nodes
     value:
       overview: !cel "steps.overview.result.body.children[1].children"
-      record: !cel "steps.overview.result.body.children[1].children[13].content[0].children"
+      record: !cel "steps.overview.result.body.children[1].children[16].content[0].children"
       perRequest: !cel "steps.overview.result.body.children[2].children"
       polishPerRequest: !cel "steps.polishOverview.result.body.children[2].children"
       acmePerRequest: !cel "steps.acmeOverview.result.body.children[2].children"
       reader: !cel "steps.conditions.result.body.children[1].children[0]"
-      enablement: !cel "steps.conditions.result.body.children[1].children[3]"
+      readerFlat: !cel "cel.bind(k, steps.conditions.result.body.children[1].children[0].content[0].children, k[2].children + k[5].children + k[8].children + k[11].children)"
+      enablement: !cel "steps.conditions.result.body.children[1].children[4]"
       data: !cel "steps.data.result.body.children[0].children"
       tables: !cel "steps.tables.result.body.children[0].children"
       filters: !cel "steps.filters.result.body.children[0].children"
@@ -559,16 +560,16 @@ steps:
       actual:
         kinds: !cel "steps.nodes.result.overview.map(c, c.type)"
         containers: !cel "steps.nodes.result.overview[2].children.map(c, c.type)"
-        styles: !cel "steps.nodes.result.overview[5].children.map(c, c.style)"
-        badges: !cel "steps.nodes.result.overview[6].children.map(c, [c.type, 'style' in c ? c.style : '-'])"
-        links: !cel "steps.nodes.result.overview[9].children.map(c, [c.type, c.to.href.path.value])"
-        images: !cel "steps.nodes.result.overview[12].children.map(c, [c.type, 'src' in c ? c.src : '-', c.alt.message])"
-        markup: !cel "steps.nodes.result.overview[12].children[2].markup.startsWith('<svg')"
+        styles: !cel "steps.nodes.result.overview[6].children[0].children.map(c, c.style)"
+        badges: !cel "steps.nodes.result.overview[6].children[1].children.map(c, [c.type, 'style' in c ? c.style : '-'])"
+        links: !cel "steps.nodes.result.overview[10].children.map(c, [c.type, c.to.href.path.value])"
+        images: !cel "steps.nodes.result.overview[14].children.map(c, [c.type, 'src' in c ? c.src : '-', c.alt.message])"
+        markup: !cel "steps.nodes.result.overview[14].children[2].markup.startsWith('<svg')"
         tabs: !cel >-
-          cel.bind(t, steps.nodes.result.overview[25], [t.address, t.tabs.map(tab, [tab.text.message[0], tab.children.map(c, c.type)])])
-        polishTab: !cel "steps.polishOverview.result.body.children[1].children[25].tabs[0].text"
+          cel.bind(t, steps.nodes.result.overview[30], [t.address, t.tabs.map(tab, [tab.text.message[0], tab.children.map(c, c.type)])])
+        polishTab: !cel "steps.polishOverview.result.body.children[1].children[30].tabs[0].text"
       expected:
-        kinds: [ text, text, columns, text, text, columns, columns, text, text, columns, text, text, columns, query, text, text, listing, text, columns, text, text, text, box, text, text, tabs ]
+        kinds: [ text, text, columns, component, text, text, stack, component, text, text, columns, component, text, text, columns, component, query, component, text, text, listing, component, stack, component, text, text, stack, component, text, text, tabs, component ]
         containers: [ box, stack, box ]
         styles: [ heading, subheading, muted, strong, accent, danger, warning, success, [ strong, accent ] ]
         badges: [ [ badge, "-" ], [ badge, accent ], [ badge, success ], [ badge, warning ], [ badge, danger ] ]
@@ -596,7 +597,7 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        url: !cel "steps.nodes.result.overview[13].query.url"
+        url: !cel "steps.nodes.result.overview[16].query.url"
         presented: !cel >-
           (steps.nodes.result.record[2].children + steps.nodes.result.record[3].children)
             .map(s, [s.children[1].value.path[0], s.children[1].present])
@@ -651,12 +652,12 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        basePath: !cel "steps.nodes.result.overview[16].basePath"
-        rowStyle: !cel "steps.nodes.result.overview[16].rowStyle"
-        columns: !cel "steps.nodes.result.overview[16].layout.columns.map(c, [c.header, 'style' in c ? c.style : null])"
-        polishHeaders: !cel "steps.polishOverview.result.body.children[1].children[16].layout.columns.map(c, c.header.message[0])"
-        nodeTexts: !cel "steps.nodes.result.overview[18].children.map(c, [c.type, c.text])"
-        polishNodeTexts: !cel "steps.polishOverview.result.body.children[1].children[18].children.map(c, c.text.message[0])"
+        basePath: !cel "steps.nodes.result.overview[20].basePath"
+        rowStyle: !cel "steps.nodes.result.overview[20].rowStyle"
+        columns: !cel "steps.nodes.result.overview[20].layout.columns.map(c, [c.header, 'style' in c ? c.style : null])"
+        polishHeaders: !cel "steps.polishOverview.result.body.children[1].children[20].layout.columns.map(c, c.header.message[0])"
+        nodeTexts: !cel "steps.nodes.result.overview[22].children[1].children.map(c, [c.type, c.text])"
+        polishNodeTexts: !cel "steps.polishOverview.result.body.children[1].children[22].children[1].children.map(c, c.text.message[0])"
       expected:
         basePath: /api/projects
         rowStyle: { by: { root: row, path: [ featured ] }, cases: { "true": strong } }
@@ -680,9 +681,9 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        inline: !cel "steps.nodes.result.overview[21]"
-        callout: !cel "steps.nodes.result.overview[22]"
-        polishCallout: !cel "steps.polishOverview.result.body.children[1].children[22].children[0].text"
+        inline: !cel "steps.nodes.result.overview[26].children[0]"
+        callout: !cel "steps.nodes.result.overview[26].children[1]"
+        polishCallout: !cel "steps.polishOverview.result.body.children[1].children[26].children[1].children[0].text"
       expected:
         inline: { type: text, fill: false, text: { lang: en, message: [ A view declared inline at the node that places it. ] } }
         callout:
@@ -722,13 +723,13 @@ steps:
       actual:
         url: !cel "steps.nodes.result.reader.query.url"
         query: !cel "steps.nodes.result.reader.query.query"
-        neverDelivered: !cel "steps.nodes.result.reader.content[0].children.exists(c, c.type == 'text' && c.text.message[0].startsWith('Never delivered'))"
-        neverProvided: !cel "steps.nodes.result.reader.content[0].children.exists(c, c.type == 'text' && c.text.message[0] == 'Never provided.')"
-        hidden: !cel "steps.nodes.result.reader.content[0].children[2].shown"
-        wrapped: !cel "steps.nodes.result.reader.content[0].children[5]"
-        keywords: !cel "steps.nodes.result.reader.content[0].children.filter(c, 'shown' in c && 'root' in c.shown.at && c.shown.at.root == 'data').map(c, [c.shown.at.path, c.shown.matches])"
-        byQuery: !cel "steps.nodes.result.reader.content[0].children.filter(c, 'shown' in c && 'root' in c.shown.at && c.shown.at.root == 'query').map(c, [c.shown.at.path, c.shown.matches])"
-        links: !cel "steps.nodes.result.reader.content[0].children[37].children.map(c, c.to.href.path.value)"
+        neverDelivered: !cel "steps.nodes.result.readerFlat.exists(c, c.type == 'text' && c.text.message[0].startsWith('Never delivered'))"
+        neverProvided: !cel "steps.nodes.result.readerFlat.exists(c, c.type == 'text' && c.text.message[0] == 'Never provided.')"
+        hidden: !cel "steps.nodes.result.reader.content[0].children[2].children[0].shown"
+        wrapped: !cel "steps.nodes.result.reader.content[0].children[2].children[3]"
+        keywords: !cel "steps.nodes.result.readerFlat.filter(c, 'shown' in c && 'root' in c.shown.at && c.shown.at.root == 'data').map(c, [c.shown.at.path, c.shown.matches])"
+        byQuery: !cel "steps.nodes.result.readerFlat.filter(c, 'shown' in c && 'root' in c.shown.at && c.shown.at.root == 'query').map(c, [c.shown.at.path, c.shown.matches])"
+        links: !cel "steps.nodes.result.reader.content[0].children[11].children[0].children.map(c, c.to.href.path.value)"
         pageQuery: !cel "steps.conditions.result.body.query"
         pageOwn: !cel "steps.conditions.result.body.children[2].children[2].shown"
       expected:
@@ -793,14 +794,14 @@ steps:
     inputs:
       actual:
         type: !cel "steps.nodes.result.enablement.type"
-        path: !cel "steps.nodes.result.enablement.request.target.path.value"
-        label: !cel "steps.nodes.result.enablement.label"
+        path: !cel "steps.nodes.result.enablement.onSubmit.mutation.url.path.value"
+        label: !cel "steps.nodes.result.enablement.onSubmit.label"
         fields: !cel "steps.nodes.result.enablement.fields.map(f, f.property)"
-        enabled: !cel "steps.nodes.result.enablement.enabled"
-        onSuccess: !cel "steps.nodes.result.enablement.onSuccess"
-        result: !cel "steps.nodes.result.enablement.result.text"
+        enabled: !cel "steps.nodes.result.enablement.onSubmit.enabled"
+        invalidates: !cel "steps.nodes.result.enablement.onSubmit.mutation.invalidates"
+        result: !cel "steps.nodes.result.enablement.onSubmit.result.text"
       expected:
-        type: action
+        type: form
         path: /api/tags
         label: { lang: en, message: [ Tag TEL-42 ] }
         fields: [ tag ]
@@ -808,7 +809,7 @@ steps:
           at: { root: values, path: [ tag ] }
           matches: { minLength: 3 }
           disabledText: { lang: en, message: [ Type a tag of three letters or more. ] }
-        onSuccess: { refreshes: [ { path: { value: /api/project-summary }, pathParams: {}, queryParams: {} } ] }
+        invalidates: [ { path: { value: /api/project-summary }, pathParams: {}, queryParams: {} } ]
         result:
           lang: en
           message:
@@ -826,24 +827,24 @@ steps:
     inputs:
       actual:
         project:
-          url: !cel "steps.nodes.result.data[3].query.url"
-          query: !cel "steps.nodes.result.data[3].query.query"
-          loading: !cel "steps.nodes.result.data[3].loading"
-          failure: !cel "steps.nodes.result.data[3].failure[0].children.map(c, [c.type, 'shown' in c ? c.shown : null])"
-          reloadOn: !cel "steps.nodes.result.data[3].query.reloadOn"
+          url: !cel "steps.nodes.result.data[2].children[1].query.url"
+          query: !cel "steps.nodes.result.data[2].children[1].query.query"
+          loading: !cel "steps.nodes.result.data[2].children[1].loading"
+          failure: !cel "steps.nodes.result.data[2].children[1].failure[0].children.map(c, [c.type, 'shown' in c ? c.shown : null])"
+          reloadOn: !cel "steps.nodes.result.data[2].children[1].query.reloadOn"
         nested:
-          url: !cel "steps.nodes.result.data[3].content[0].children[2].query.url"
-          content: !cel "steps.nodes.result.data[3].content[0].children[2].content[0].columns.map(c, c.header.message[0])"
+          url: !cel "steps.nodes.result.data[2].children[1].content[0].children[2].query.url"
+          content: !cel "steps.nodes.result.data[2].children[1].content[0].children[2].content[0].columns.map(c, c.header.message[0])"
         failing: !cel "steps.nodes.result.data[6].children.map(c, [c.query.url, c.failure[0].children.map(f, f.value.path[0])])"
-        clock: !cel "[steps.nodes.result.data[9].query.url.path.value, steps.nodes.result.data[9].query.reloadOn]"
+        clock: !cel "[steps.nodes.result.data[10].query.url.path.value, steps.nodes.result.data[10].query.reloadOn]"
         gate:
-          type: !cel "steps.nodes.result.data[12].type"
-          url: !cel "steps.nodes.result.data[12].query.url.path.value"
-          reloadOn: !cel "steps.nodes.result.data[12].query.reloadOn"
-          branches: !cel "steps.nodes.result.data[12].content[0].children.map(c, c.shown)"
-          signIn: !cel "[steps.nodes.result.data[12].content[0].children[0].children[1].request.target.path.value, steps.nodes.result.data[12].content[0].children[0].children[1].fields.map(f, f.property), steps.nodes.result.data[12].content[0].children[0].children[1].onSuccess]"
-          account: !cel "[steps.nodes.result.data[12].content[0].children[1].children[0].query.url.path.value, steps.nodes.result.data[12].content[0].children[1].children[0].query.reloadOn]"
-          actions: !cel "steps.nodes.result.data[12].content[0].children[1].children[1].children.map(a, [a.request.target.path.value, a.label.message[0], a.onSuccess])"
+          type: !cel "steps.nodes.result.data[14].type"
+          url: !cel "steps.nodes.result.data[14].query.url.path.value"
+          reloadOn: !cel "steps.nodes.result.data[14].query.reloadOn"
+          branches: !cel "steps.nodes.result.data[14].content[0].children.map(c, c.shown)"
+          signIn: !cel "[steps.nodes.result.data[14].content[0].children[0].children[1].onSubmit.mutation.url.path.value, steps.nodes.result.data[14].content[0].children[0].children[1].fields.map(f, f.property), steps.nodes.result.data[14].content[0].children[0].children[1].onSubmit.mutation.invalidates]"
+          account: !cel "[steps.nodes.result.data[14].content[0].children[1].children[0].query.url.path.value, steps.nodes.result.data[14].content[0].children[1].children[0].query.reloadOn]"
+          actions: !cel "steps.nodes.result.data[14].content[0].children[1].children[1].children.map(a, [a.action.mutation.url.path.value, a.action.label.message[0], a.action.mutation.invalidates])"
       expected:
         project:
           url:
@@ -872,12 +873,12 @@ steps:
           branches:
             - { at: { root: data, path: [ signedIn ] }, matches: { const: false } }
             - { at: { root: data, path: [ signedIn ] }, matches: { const: true } }
-          signIn: [ /api/session/signin, [ email ], { refreshes: [ { path: { value: /api/session }, pathParams: {}, queryParams: {} } ] } ]
+          signIn: [ /api/session/signin, [ email ], [ { path: { value: /api/session }, pathParams: {}, queryParams: {} } ] ]
           account: [ /api/private/account, [ focus ] ]
           actions:
-            - [ /api/private/ping, Check the session, { refreshes: [ { path: { value: /api/private/account }, pathParams: {}, queryParams: {} } ] } ]
-            - [ /api/session/signout, End the session quietly, { refreshes: [] } ]
-            - [ /api/session/signout, Sign out, { refreshes: [ { path: { value: /api/session }, pathParams: {}, queryParams: {} } ] } ]
+            - [ /api/private/ping, Check the session, [ { path: { value: /api/private/account }, pathParams: {}, queryParams: {} } ] ]
+            - [ /api/session/signout, End the session quietly, [] ]
+            - [ /api/session/signout, Sign out, [ { path: { value: /api/session }, pathParams: {}, queryParams: {} } ] ]
 
   # Tables: listings drawn as tables, columns derived from the model with the
   # default page size and dialog; written columns with style rules and the
@@ -895,24 +896,24 @@ steps:
           edit: !cel "[steps.nodes.result.tables[2].edit.to.type, steps.nodes.result.tables[2].edit.to.href.path, steps.nodes.result.tables[2].edit.to.surface]"
           delete: !cel "steps.nodes.result.tables[2].delete"
         written:
-          pageSize: !cel "steps.nodes.result.tables[5].pageSize"
-          rowStyle: !cel "steps.nodes.result.tables[5].rowStyle"
-          columns: !cel "steps.nodes.result.tables[5].layout.columns.map(c, [c.header.message[0], 'sort' in c ? c.sort : '-', 'style' in c ? c.style : null])"
+          pageSize: !cel "steps.nodes.result.tables[6].pageSize"
+          rowStyle: !cel "steps.nodes.result.tables[6].rowStyle"
+          columns: !cel "steps.nodes.result.tables[6].layout.columns.map(c, [c.header.message[0], 'sort' in c ? c.sort : '-', 'style' in c ? c.style : null])"
         members:
-          source: !cel "[steps.nodes.result.tables[8].basePath, steps.nodes.result.tables[8].pageSize]"
-          columns: !cel "steps.nodes.result.tables[8].layout.columns.map(c, [c.header.message[0], c.value.path, c.present])"
+          source: !cel "[steps.nodes.result.tables[10].basePath, steps.nodes.result.tables[10].pageSize]"
+          columns: !cel "steps.nodes.result.tables[10].layout.columns.map(c, [c.header.message[0], c.value.path, c.present])"
         byQuery:
-          links: !cel "steps.nodes.result.tables[11].children.map(c, c.to.href.path.value)"
-          query: !cel "steps.nodes.result.tables[12].query"
-          filters: !cel "steps.nodes.result.tables[12].filters"
-          fixed: !cel "steps.nodes.result.tables[15].filters"
+          links: !cel "steps.nodes.result.tables[14].children[0].children.map(c, c.to.href.path.value)"
+          query: !cel "steps.nodes.result.tables[14].children[1].query"
+          filters: !cel "steps.nodes.result.tables[14].children[1].filters"
+          fixed: !cel "steps.nodes.result.tables[18].filters"
         surfaces: !cel >-
-          [20, 23, 26, 29, 32, 35].map(i, steps.nodes.result.tables[i]).map(t, [
+          [24, 28, 32, 36, 40, 44].map(i, steps.nodes.result.tables[i]).map(t, [
             t.create.to.type, t.create.to.surface, t.edit.to.type, t.edit.to.surface, t.delete])
-        ownPage: !cel "[steps.nodes.result.tables[38].create.to, steps.nodes.result.tables[38].edit.to]"
+        ownPage: !cel "[steps.nodes.result.tables[48].create.to, steps.nodes.result.tables[48].edit.to]"
         polish: !cel "[steps.polishTables.result.body.children[0].children[0].text.message[0], steps.polishTables.result.body.children[0].children[2].layout.columns[3].labels[1].label.message[0]]"
       expected:
-        kinds: [text, text, listing, text, text, listing, text, text, listing, text, text, columns, listing, text, text, listing, text, text, text, text, listing, text, text, listing, text, text, listing, text, text, listing, text, text, listing, text, text, listing, text, text, listing]
+        kinds: [text, text, listing, component, text, text, listing, component, text, text, listing, component, text, text, stack, component, text, text, listing, component, text, text, text, text, listing, component, text, text, listing, component, text, text, listing, component, text, text, listing, component, text, text, listing, component, text, text, listing, component, text, text, listing, component]
         derived:
           columns:
             - [ title, Task ]
@@ -1025,8 +1026,8 @@ steps:
             b.fields.map(f, has(f.default) ? [f.property, f.operator, f.control, f.pinned, f.default] : [f.property, f.operator, f.control, f.pinned]),
             b.presets.map(p, [p.label.message[0], p.values])])
         content: !cel "steps.nodes.result.filters.filter(c, c.type == 'filters').map(b, [b.content.type, b.content.basePath, b.content.pageSize])"
-        label: !cel "steps.nodes.result.filters[5].fields[1].label"
-        polish: !cel "[steps.polishFilters.result.body.children[0].children[0].text.message[0], steps.polishFilters.result.body.children[0].children[5].presets[0].label.message[0], steps.polishFilters.result.body.children[0].children[5].fields[1].label.message[0]]"
+        label: !cel "steps.nodes.result.filters[6].fields[1].label"
+        polish: !cel "[steps.polishFilters.result.body.children[0].children[0].text.message[0], steps.polishFilters.result.body.children[0].children[6].presets[0].label.message[0], steps.polishFilters.result.body.children[0].children[6].fields[1].label.message[0]]"
       expected:
         bars:
           # Every filter the collection accepts.
@@ -1187,36 +1188,36 @@ steps:
                p.channels.items.enum, p.keywords.items.type, p.accessCode.writeOnly])
           state: !cel "steps.nodes.result.forms[3].state"
         byHand:
-          fields: !cel "steps.nodes.result.forms[6].fields.map(f, [f.property, f.control])"
-          state: !cel "steps.nodes.result.forms[6].state"
-        requests: !cel "[steps.nodes.result.forms[9].query.url, steps.nodes.result.forms[9].content[0].columns.map(c, c.header.message[0])]"
+          fields: !cel "steps.nodes.result.forms[7].fields.map(f, [f.property, f.control])"
+          state: !cel "steps.nodes.result.forms[7].state"
+        requests: !cel "[steps.nodes.result.forms[11].query.url, steps.nodes.result.forms[11].content[0].columns.map(c, c.header.message[0])]"
         booking:
-          basePath: !cel "steps.nodes.result.forms[13].record.basePath"
-          groups: !cel "steps.nodes.result.forms[13].groups.map(g, [g.name, g.label.message[0], has(g.description) ? g.description.message[0] : '-', has(g.shown) ? g.shown : null])"
+          basePath: !cel "steps.nodes.result.forms[16].record.basePath"
+          groups: !cel "steps.nodes.result.forms[16].groups.map(g, [g.name, g.label.message[0], has(g.description) ? g.description.message[0] : '-', has(g.shown) ? g.shown : null])"
           fields: !cel >-
-            steps.nodes.result.forms[13].fields.map(f, [f.type, f.property, f.group,
+            steps.nodes.result.forms[16].fields.map(f, [f.type, f.property, f.group,
               f.type == 'picker' ? f.surface.type : (f.type == 'dateRange' ? '-' : f.control),
               has(f.shown) ? f.shown : null])
           projectSource: !cel >-
-            cel.bind(o, steps.nodes.result.forms[13].fields[0].options,
+            cel.bind(o, steps.nodes.result.forms[16].fields[0].options,
               [o.basePath, o.filters, o.pageSize, o.value, o.label, o.hint, 'to' in o, 'search' in o])
           lead: !cel >-
-            cel.bind(o, steps.nodes.result.forms[13].fields[2].options,
+            cel.bind(o, steps.nodes.result.forms[16].fields[2].options,
               [o.basePath, o.filters, o.pageSize, o.value, o.label, o.hint, o.to, o.search])
-          surfaces: !cel "[steps.nodes.result.forms[13].fields[2].surface, steps.nodes.result.forms[13].fields[3].surface, steps.nodes.result.forms[13].fields[4].surface]"
-          team: !cel "steps.nodes.result.forms[13].fields[3].options == steps.nodes.result.forms[13].fields[4].options && steps.nodes.result.forms[13].fields[3].options.filters == {'active': {'value': true}}"
-          helpers: !cel "[steps.nodes.result.forms[13].fields[5].options.pageSize, steps.nodes.result.forms[13].fields[5].options.filters]"
+          surfaces: !cel "[steps.nodes.result.forms[16].fields[2].surface, steps.nodes.result.forms[16].fields[3].surface, steps.nodes.result.forms[16].fields[4].surface]"
+          team: !cel "steps.nodes.result.forms[16].fields[3].options == steps.nodes.result.forms[16].fields[4].options && steps.nodes.result.forms[16].fields[3].options.filters == {'active': {'value': true}}"
+          helpers: !cel "[steps.nodes.result.forms[16].fields[5].options.pageSize, steps.nodes.result.forms[16].fields[5].options.filters]"
           dateRange: !cel >-
-            cel.bind(f, steps.nodes.result.forms[13].fields[6],
+            cel.bind(f, steps.nodes.result.forms[16].fields[6],
               [f.presets.map(x, [x.label.message[0], x.unit, x.offset]), f.weekStart, f.initialPreset, f.warnLongerThan, f.label.message[0], f.description.message[0]])
-          state: !cel "steps.nodes.result.forms[13].state"
-        bookings: !cel "[steps.nodes.result.forms[16].query.url, steps.nodes.result.forms[16].content[0].columns.map(c, c.header.message[0])]"
+          state: !cel "steps.nodes.result.forms[16].state"
+        bookings: !cel "[steps.nodes.result.forms[20].query.url, steps.nodes.result.forms[20].content[0].columns.map(c, c.header.message[0])]"
         polish: !cel >-
           cel.bind(f, steps.polishForms.result.body.children[0].children, [
             f[0].text.message[0], f[3].fields[0].label.message[0], f[3].fields[1].labels[1].label.message[0],
-            f[13].groups[1].label.message[0], f[13].fields[6].presets[3].label.message[0], f[16].content[0].columns[3].header.message[0]])
+            f[16].groups[1].label.message[0], f[16].fields[6].presets[3].label.message[0], f[20].content[0].columns[3].header.message[0]])
       expected:
-        kinds: [ text, text, text, form, text, text, form, text, text, query, text, text, text, form, text, text, query ]
+        kinds: [ text, text, text, form, component, text, text, form, component, text, text, query, component, text, text, text, form, component, text, text, query, component ]
         derived:
           basePath: /api/requests
           fields:
@@ -1315,66 +1316,67 @@ steps:
     inputs:
       actual:
         kinds: !cel "steps.nodes.result.actions.map(c, c.type)"
-        bare: !cel "cel.bind(a, steps.nodes.result.actions[2], [a.request.target.path.value, a.label.message[0], a.fields, a.onSuccess, 'result' in a, 'answer' in a])"
+        bare: !cel "cel.bind(a, steps.nodes.result.actions[2].action, [a.mutation.url.path.value, a.label.message[0], a.inputs, a.mutation.invalidates, 'result' in a, 'answer' in a.mutation])"
         estimate:
-          fields: !cel "steps.nodes.result.actions[5].fields.map(f, [f.type, f.property, has(f.control) ? f.control : '-', f.group])"
-          groups: !cel "steps.nodes.result.actions[5].groups.map(g, [g.name, g.label.message[0]])"
-          state: !cel "steps.nodes.result.actions[5].state"
-          answer: !cel "steps.nodes.result.actions[5].answer.required"
-          result: !cel "steps.nodes.result.actions[5].result.children.map(c, c.type)"
-          texts: !cel "steps.nodes.result.actions[5].result.children.filter(c, c.type == 'text').map(c, c.text.values)"
-          value: !cel "[steps.nodes.result.actions[5].result.children[2].value, steps.nodes.result.actions[5].result.children[2].present]"
-          list: !cel "cel.bind(l, steps.nodes.result.actions[5].result.children[3], [l.heading.message[0], l.rows, l.columns.map(c, [c.header.message[0], c.value.path[0], c.labels.size()])])"
+          fields: !cel "steps.nodes.result.actions[6].fields.map(f, [f.type, f.property, has(f.control) ? f.control : '-', f.group])"
+          groups: !cel "steps.nodes.result.actions[6].groups.map(g, [g.name, g.label.message[0]])"
+          state: !cel "steps.nodes.result.actions[6].state"
+          answer: !cel "steps.nodes.result.actions[6].onSubmit.mutation.answer.required"
+          result: !cel "steps.nodes.result.actions[6].onSubmit.result.children.map(c, c.type)"
+          texts: !cel "steps.nodes.result.actions[6].onSubmit.result.children.filter(c, c.type == 'text').map(c, c.text.values)"
+          value: !cel "[steps.nodes.result.actions[6].onSubmit.result.children[2].value, steps.nodes.result.actions[6].onSubmit.result.children[2].present]"
+          list: !cel "cel.bind(l, steps.nodes.result.actions[6].onSubmit.result.children[3], [l.heading.message[0], l.rows, l.columns.map(c, [c.header.message[0], c.value.path[0], c.labels.size()])])"
         failure:
-          assign: !cel "cel.bind(a, steps.nodes.result.actions[8], [a.request.target.path.value, a.label.message[0], a.fields.map(f, f.property), a.failure.style, a.failure.children.map(c, [c.type, 'shown' in c ? c.shown : null]), a.failure.children[0].text.values, a.result.text.values])"
-          refused: !cel "cel.bind(a, steps.nodes.result.actions[10], [a.request.target.path.value, a.answer.required, a.result, a.failure.style, a.failure.children[0].text.values, a.failure.children[1].value])"
-        navigate: !cel "steps.nodes.result.actions[13].children.map(a, [a.request.target.path.value, a.fields.map(f, f.type), a.onSuccess])"
-        counts: !cel "[steps.nodes.result.actions[16].query.url, steps.nodes.result.actions[16].content[0].text.values.code]"
-        move: !cel "cel.bind(a, steps.nodes.result.actions[17], [a.request.target.path.value, a.fields.map(f, f.property), a.onSuccess, a.result.children.map(c, c.type)])"
-        comment: !cel "cel.bind(a, steps.nodes.result.actions[20], [a.request.target.path.value, a.concurrency, a.clearAnswerOn, a.enabled, a.onSuccess, a.result.text.values])"
+          assign: !cel "cel.bind(a, steps.nodes.result.actions[10].children[0], [a.onSubmit.mutation.url.path.value, a.onSubmit.label.message[0], a.fields.map(f, f.property), a.onSubmit.failure.style, a.onSubmit.failure.children.map(c, [c.type, 'shown' in c ? c.shown : null]), a.onSubmit.failure.children[0].text.values, a.onSubmit.result.text.values])"
+          refused: !cel "cel.bind(a, steps.nodes.result.actions[10].children[2], [a.onSubmit.mutation.url.path.value, a.onSubmit.mutation.answer.required, a.onSubmit.result, a.onSubmit.failure.style, a.onSubmit.failure.children[0].text.values, a.onSubmit.failure.children[1].value])"
+        navigate: !cel "steps.nodes.result.actions[14].children.map(a, a.type == 'form' ? [a.onSubmit.mutation.url.path.value, a.fields.map(f, f.type), a.onSuccess] : [a.action.mutation.url.path.value, [], a.action.onSuccess])"
+        counts: !cel "[steps.nodes.result.actions[18].children[0].query.url, steps.nodes.result.actions[18].children[0].content[0].text.values.code]"
+        move: !cel "cel.bind(a, steps.nodes.result.actions[18].children[1], [a.onSubmit.mutation.url.path.value, a.fields.map(f, f.property), a.onSubmit.mutation.invalidates, a.onSubmit.result.children.map(c, c.type)])"
+        comment: !cel "cel.bind(a, steps.nodes.result.actions[22], [a.onSubmit.mutation.url.path.value, a.onSubmit.mutation.concurrency, a.clearAnswerOn, a.onSubmit.enabled, a.onSubmit.mutation.invalidates, a.onSubmit.result.text.values])"
         table:
-          source: !cel "[steps.nodes.result.actions[23].basePath, steps.nodes.result.actions[23].filters, steps.nodes.result.actions[23].pageSize]"
+          source: !cel "[steps.nodes.result.actions[26].basePath, steps.nodes.result.actions[26].filters, steps.nodes.result.actions[26].pageSize]"
           rowActions: !cel >-
-            steps.nodes.result.actions[23].rowActions.map(r, [r.action.request.target.path.value, r.action.label.message[0], r.inputs,
-              has(r.confirm) ? r.confirm.message[0] : '-', has(r.prompt) ? r.prompt.fields.map(f, f.property) : [],
+            steps.nodes.result.actions[26].rowActions.map(r, [r.mutation.url.path.value, r.label.message[0], r.inputs,
+              has(r.confirm) ? r.confirm.message[0] : '-', r.prompt != null ? r.prompt.fields.map(f, f.property) : [],
               has(r.enabled) ? [r.enabled.matches, r.enabled.disabledText.message[0]] : [],
-              r.action.result.text.message])
+              r.result.text.message])
         list:
-          url: !cel "steps.nodes.result.actions[26].query.url"
-          rows: !cel "steps.nodes.result.actions[26].content[0].rows"
+          url: !cel "steps.nodes.result.actions[30].query.url"
+          rows: !cel "steps.nodes.result.actions[30].content[0].rows"
           rowActions: !cel >-
-            steps.nodes.result.actions[26].content[0].rowActions.map(r, [r.action.request.target.path.value, r.action.label.message[0], r.inputs,
-              has(r.confirm) ? r.confirm.message[0] : '-', has(r.prompt) ? r.prompt.fields.map(f, f.property) : [],
-              has(r.enabled) ? [r.enabled.at, r.enabled.matches] : [], r.action.onSuccess])
+            steps.nodes.result.actions[30].content[0].rowActions.map(r, [r.mutation.url.path.value, r.label.message[0], r.inputs,
+              has(r.confirm) ? r.confirm.message[0] : '-', r.prompt != null ? r.prompt.fields.map(f, f.property) : [],
+              has(r.enabled) ? [r.enabled.at, r.enabled.matches] : [], r.mutation.invalidates])
         more: !cel >-
-          steps.nodes.result.actions[29].children.map(a, [a.request.target.path.value, a.label.message[0], a.fields.map(f, [f.type, f.property]),
-            a.onSuccess, 'answer' in a])
-        mirrorResult: !cel "steps.nodes.result.actions[29].children[2].result.text.values"
+          steps.nodes.result.actions[34].children.map(a, a.type == 'form'
+            ? [a.onSubmit.mutation.url.path.value, a.onSubmit.label.message[0], a.fields.map(f, [f.type, f.property]), a.onSuccess, a.onSubmit.mutation.invalidates, 'answer' in a.onSubmit.mutation]
+            : [a.action.mutation.url.path.value, a.action.label.message[0], [], a.action.onSuccess, a.action.mutation.invalidates, 'answer' in a.action.mutation])
+        mirrorResult: !cel "steps.nodes.result.actions[34].children[2].action.result.text.values"
         pause: !cel >-
-          cel.bind(a, steps.nodes.result.actions[32], [a.request.target.path.value, a.fields.map(f, [f.type, f.property]), a.answer.required,
-            a.onSuccess, a.failure.children.map(c, c.value)])
-        loop: !cel "cel.bind(a, steps.nodes.result.actions[34], [a.request.target.path.value, 'answer' in a, a.failure.children.map(c, 'shown' in c ? c.shown.matches : null)])"
+          cel.bind(a, steps.nodes.result.actions[38].children[0], [a.onSubmit.mutation.url.path.value, a.fields.map(f, [f.type, f.property]), a.onSubmit.mutation.answer.required,
+            a.onSubmit.mutation.invalidates, a.onSubmit.failure.children.map(c, c.value)])
+        loop: !cel "cel.bind(a, steps.nodes.result.actions[38].children[2].action, [a.mutation.url.path.value, 'answer' in a.mutation, a.failure.children.map(c, 'shown' in c ? c.shown.matches : null)])"
         byAddress:
-          links: !cel "steps.nodes.result.actions[37].children.map(c, c.to.href.path.value)"
-          query: !cel "steps.nodes.result.actions[38].query"
-          filters: !cel "steps.nodes.result.actions[38].filters"
+          links: !cel "steps.nodes.result.actions[42].children[0].children.map(c, c.to.href.path.value)"
+          query: !cel "steps.nodes.result.actions[42].children[1].query"
+          filters: !cel "steps.nodes.result.actions[42].children[1].filters"
           rowActions: !cel >-
-            steps.nodes.result.actions[38].rowActions.map(r, [r.action.request.target.path.value, r.action.label.message[0], r.inputs,
-              r.confirm.message[0], r.prompt.fields, r.enabled])
+            steps.nodes.result.actions[42].children[1].rowActions.map(r, [r.mutation.url.path.value, r.label.message[0], r.inputs,
+              r.confirm.message[0], r.prompt, r.enabled])
         polish: !cel >-
           cel.bind(a, steps.polishActions.result.body.children[0].children, [
-            a[0].text.message[0], a[5].label.message[0], a[23].rowActions[0].action.label.message[0],
-            a[23].rowActions[1].confirm.message[0], a[26].content[0].rowActions[2].prompt.fields[0].label.message[0],
-            a[29].children[0].label.message[0], a[34].failure.children[1].text.message[0],
-            a[38].rowActions[0].confirm.message[0]])
+            a[0].text.message[0], a[6].onSubmit.label.message[0], a[26].rowActions[0].label.message[0],
+            a[26].rowActions[1].confirm.message[0], a[30].content[0].rowActions[2].prompt.fields[0].label.message[0],
+            a[34].children[0].onSubmit.label.message[0], a[38].children[2].action.failure.children[1].text.message[0],
+            a[42].children[1].rowActions[0].confirm.message[0]])
       expected:
         kinds:
           [
-            text, text, action, text, text, action, text, text, action, text, action, text, text, columns, text, text,
-            query, action, text, text, action, text, text, listing, text, text, query, text, text, columns, text, text,
-            action, text, action, text, text, columns, listing,
+            text, text, button, component, text, text, form, component, text, text, stack, component, text, text, columns, component,
+            text, text, stack, component, text, text, form, component, text, text, listing, component, text, text, query, component,
+            text, text, columns, component, text, text, stack, component, text, text, stack, component,
           ]
-        bare: [ /api/unblock, Unblock TEL-42, [], { refreshes: [ { path: { value: /api/tasks }, pathParams: {}, queryParams: {} }, { path: { value: /api/task-counts }, pathParams: {}, queryParams: {} } ] }, false, false ]
+        bare: [ /api/unblock, Unblock TEL-42, {}, [ { path: { value: /api/tasks }, pathParams: {}, queryParams: {} }, { path: { value: /api/task-counts }, pathParams: {}, queryParams: {} } ], false, false ]
         estimate:
           fields:
             - [ choice, projectCode, auto, scope ]
@@ -1414,10 +1416,10 @@ steps:
             - { code: { root: error, path: [ code ] } }
             - { root: error, path: [ message ] }
         navigate:
-          - [ /api/project-page, [ choice ], { to: { type: navigate, href: { path: { root: result, path: [ page ] }, pathParams: {}, queryParams: {} } }, refreshes: [] } ]
-          - [ /api/homepage, [], { to: { type: navigate, href: { path: { root: result, path: [ homepage ] }, pathParams: {}, queryParams: {} } }, refreshes: [] } ]
+          - [ /api/project-page, [ choice ], [ { type: navigate, href: { path: { root: result, path: [ page ] }, pathParams: {}, queryParams: {} } } ] ]
+          - [ /api/homepage, [], [ { type: navigate, href: { path: { root: result, path: [ homepage ] }, pathParams: {}, queryParams: {} } } ] ]
         counts: [ { path: { value: /api/task-counts }, pathParams: {}, queryParams: { code: { value: TEL-42 } } }, { root: data, path: [ code ] } ]
-        move: [ /api/task-status, [ id, status ], { refreshes: [ { path: { value: /api/task-counts }, pathParams: {}, queryParams: {} }, { path: { value: /api/tasks }, pathParams: {}, queryParams: {} } ] }, [ text, value ] ]
+        move: [ /api/task-status, [ id, status ], [ { path: { value: /api/task-counts }, pathParams: {}, queryParams: {} }, { path: { value: /api/tasks }, pathParams: {}, queryParams: {} } ], [ text, value ] ]
         comment:
           - /api/comments
           - serial
@@ -1425,7 +1427,7 @@ steps:
           - at: { root: values, path: [ body ] }
             matches: { minLength: 3 }
             disabledText: { lang: en, message: [ Write three characters or more. ] }
-          - { refreshes: [ { path: { value: /api/comments }, pathParams: {}, queryParams: {} } ] }
+          - [ { path: { value: /api/comments }, pathParams: {}, queryParams: {} } ]
           - id: { root: result, path: [ id ] }
             title: { root: result, path: [ taskTitle ] }
             count: { root: result, path: [ count ] }
@@ -1448,7 +1450,7 @@ steps:
               - [ Closed ]
             - - /api/assign
               - Assign
-              - { id: { root: row, path: [ id ] } }
+              - { id: { root: row, path: [ id ] }, assigneeEmail: { root: prompt, path: [ assigneeEmail ] } }
               - "-"
               - [ assigneeEmail ]
               - []
@@ -1463,31 +1465,31 @@ steps:
               - "-"
               - []
               - [ { root: row, path: [ pinned ] }, { const: false } ]
-              - { refreshes: [ { path: { value: /api/comments }, pathParams: {}, queryParams: {} } ] }
+              - [ { path: { value: /api/comments }, pathParams: {}, queryParams: {} } ]
             - - /api/comments/delete
               - Delete
               - { id: { root: row, path: [ id ] } }
               - Delete this comment?
               - []
               - []
-              - { refreshes: [ { path: { value: /api/comments }, pathParams: {}, queryParams: {} } ] }
+              - [ { path: { value: /api/comments }, pathParams: {}, queryParams: {} } ]
             - - /api/comments/edit
               - Edit
-              - { id: { root: row, path: [ id ] } }
+              - { id: { root: row, path: [ id ] }, body: { root: prompt, path: [ body ] } }
               - Rewrite this comment?
               - [ body ]
               - []
-              - { refreshes: [ { path: { value: /api/comments }, pathParams: {}, queryParams: {} } ] }
+              - [ { path: { value: /api/comments }, pathParams: {}, queryParams: {} } ]
         more:
-          - [ /api/tasks, Add it and open the tables, [ [ input, title ], [ choice, projectCode ] ], { to: { type: navigate, href: { path: { value: /tables }, pathParams: {}, queryParams: {} } }, refreshes: [ { path: { value: /api/tasks }, pathParams: {}, queryParams: {} } ] }, false ]
-          - [ /api/team-links, Open the handbook, [], { to: { type: navigate, href: { path: { root: result, path: [ handbook ] }, pathParams: {}, queryParams: {} } }, refreshes: [] }, true ]
-          - [ /api/team-links, Open the mirror, [], { to: { type: navigate, href: { path: { root: result, path: [ mirror ] }, pathParams: {}, queryParams: {} } }, refreshes: [] }, true ]
+          - [ /api/tasks, Add it and open the tables, [ [ input, title ], [ choice, projectCode ] ], [ { type: navigate, href: { path: { value: /tables }, pathParams: {}, queryParams: {} } } ], [ { path: { value: /api/tasks }, pathParams: {}, queryParams: {} } ], false ]
+          - [ /api/team-links, Open the handbook, [], [ { type: navigate, href: { path: { root: result, path: [ handbook ] }, pathParams: {}, queryParams: {} } } ], [], true ]
+          - [ /api/team-links, Open the mirror, [], [ { type: navigate, href: { path: { root: result, path: [ mirror ] }, pathParams: {}, queryParams: {} } } ], [], true ]
         mirrorResult: { mirror: { root: result, path: [ mirror ] } }
         pause:
           - /api/private/pause
           - [ [ choice, code ] ]
           - [ code, name, status ]
-          - { refreshes: [ { path: { value: /api/projects }, pathParams: {}, queryParams: {} } ] }
+          - [ { path: { value: /api/projects }, pathParams: {}, queryParams: {} } ]
           - [ { root: error, path: [ code ] }, { root: error, path: [ message ] } ]
         loop: [ /api/loop, false, [ { required: [ status ] }, { not: { required: [ status ] } }, null ] ]
         byAddress:
@@ -1501,7 +1503,7 @@ steps:
               - Move
               - { id: { root: row, path: [ id ] }, status: { root: query, path: [ moveTo ] } }
               - Move this task to the status the address names?
-              - []
+              - null
               - at: { root: query, path: [ moveTo ] }
                 matches: { type: string }
                 disabledText: { lang: en, message: [ Choose a status above first. ] }
@@ -1522,9 +1524,9 @@ steps:
         desk: !cel >-
           cel.bind(c, steps.nodes.result.components[2],
             [c.export, c.abi, c.external, c.module.name, c.props, c.stylesheets.map(s, s.name)])
-        table: !cel "cel.bind(t, steps.nodes.result.components[5], [t.basePath, t.filters, t.pageSize, 'edit' in t, t.delete])"
+        table: !cel "cel.bind(t, steps.nodes.result.components[6], [t.basePath, t.filters, t.pageSize, 'edit' in t, t.delete])"
         cell: !cel >-
-          cel.bind(c, steps.nodes.result.components[5].layout.columns[2], [c.header.message[0], c.cell.export, c.cell.props,
+          cel.bind(c, steps.nodes.result.components[6].layout.columns[2], [c.header.message[0], c.cell.export, c.cell.props,
             c.cell.module == steps.nodes.result.components[2].module])
         module: !cel >-
           [steps.componentModule.result.status, steps.componentModule.result.headers['content-type'],
@@ -1532,7 +1534,7 @@ steps:
         stylesheet: !cel "[steps.componentStylesheet.result.status, steps.componentStylesheet.result.headers['content-type'], steps.componentStylesheet.result.body.contains('.showcase-desk')]"
         polish: !cel "steps.polishComponents.result.body.children[0].children.filter(c, c.type == 'text' && c.style == 'heading').map(c, c.text.message[0])"
       expected:
-        kinds: [ text, text, component, text, text, listing, text, text ]
+        kinds: [ text, text, component, component, text, text, listing, component, text, text ]
         desk:
           - TaskDesk
           - ui_react-1
@@ -1561,14 +1563,14 @@ steps:
         bar: !cel >-
           cel.bind(f, steps.nodes.result.crud[4], [f.apply, f.placement, f.state.key, f.state.address,
             f.state.store, size(f.fields)])
-        sharedState: !cel "[steps.nodes.result.crud[4].state.key, steps.nodes.result.crud[4].state.store] == [steps.nodes.result.filters[8].state.key, steps.nodes.result.filters[8].state.store]"
+        sharedState: !cel "[steps.nodes.result.crud[4].state.key, steps.nodes.result.crud[4].state.store] == [steps.nodes.result.filters[10].state.key, steps.nodes.result.filters[10].state.store]"
         table: !cel >-
           cel.bind(t, steps.nodes.result.crud[4].content, [t.basePath, t.key, t.delete, t.layout.columns.map(c, c.value.path[0])])
         create: !cel "cel.bind(o, steps.nodes.result.crud[4].content.create, [o.to.type, o.to.href.path, o.to.surface.type, o.to.surface.side])"
         edit: !cel "cel.bind(o, steps.nodes.result.crud[4].content.edit, [o.to.type, o.to.surface.type, o.to.surface.address])"
         polish: !cel "steps.polishCrud.result.body.children[0].children[0].text"
       expected:
-        kinds: [ text, text, text, text, filters ]
+        kinds: [ text, text, text, text, filters, component ]
         bar: [ commit, { type: aside, side: end, show: chosen, controls: chips, summary: chips, compact: { type: collapsible, open: false, show: chosen, controls: chips, summary: chips } }, aside, false, { type: local }, 15 ]
         sharedState: true
         table:
@@ -1589,12 +1591,12 @@ steps:
       actual:
         kinds: !cel "steps.nodes.result.themes.map(c, c.type)"
         mounts: !cel "steps.nodes.result.themes[2].children.map(b, b.children[0].text.message[0])"
-        components: !cel "[steps.nodes.result.themes[6], steps.nodes.result.themes[9]].map(c, [c.export, c.props, c.module == steps.nodes.result.components[2].module])"
+        components: !cel "[steps.nodes.result.themes[6], steps.nodes.result.themes[10]].map(c, [c.export, c.props, c.module == steps.nodes.result.components[2].module])"
         rootLinks: !cel "[steps.themes.result.body.children[2].children[2], steps.themes.result.body.children[2].children[4]].map(c, c.children.map(l, l.to.href.path.value))"
         badge: !cel "[steps.themes, steps.acmeThemes].map(p, p.result.body.children[2].children.exists(c, c.type == 'badge'))"
         polish: !cel "[steps.polishThemes.result.body.children[1].children[0].text, steps.polishThemes.result.body.children[2].children[0].text]"
       expected:
-        kinds: [ text, text, columns, text, text, text, component, text, text, component ]
+        kinds: [ text, text, columns, text, text, text, component, component, text, text, component, component ]
         mounts: [ At the root, Under /radix, Under /brand, Under /sidebar ]
         components:
           - [ TokenSheet, {}, true ]
@@ -1662,9 +1664,9 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        menu: !cel "steps.records.result.body.children[0].children[21].items.map(i, i.to)"
-        press: !cel "steps.records.result.body.children[0].children[22].press"
-        fullPage: !cel "steps.records.result.body.children[0].children[22].layout.content.children[1].to"
+        menu: !cel "steps.records.result.body.children[0].children[27].children[0].items.map(i, i.to)"
+        press: !cel "steps.records.result.body.children[0].children[27].children[1].press"
+        fullPage: !cel "steps.records.result.body.children[0].children[27].children[1].layout.content.children[1].to"
         boardCreate: !cel "steps.records.result.body.children[0].children.filter(c, c.type == 'filters' || c.type == 'listing').map(c, c.type == 'listing' ? c : c.content).filter(l, l.layout.type == 'board').map(l, l.create.to)"
         page: !cel "[steps.recordPage.result.body.path, steps.recordPage.result.body.title.message[0], steps.recordPage.result.body.children[0].query.url]"
       expected:

@@ -66,9 +66,6 @@
   [data-telo-part="listing"],
   [data-telo-part="table"],
   [data-telo-part="form"],
-  [data-telo-part="action"],
-  [data-telo-part="action-result"],
-  [data-telo-part="action-failure"],
   [data-telo-part="list"] { display: flex; flex-direction: column; }
   /* A contained page is no wider than the look's measure, centred; a full one
      takes all the room it has. */
@@ -346,7 +343,7 @@
   [data-telo-part="main"][data-fill="true"] { min-height: 0; }
   [data-telo-part="page"][data-fill="true"] { height: 100%; overflow-y: auto; }
   [data-fill="true"] { flex-grow: 1; flex-shrink: 1; flex-basis: 0; }
-  :is([data-telo-part="page"][data-fill="true"], [data-surface="drawer"]) [data-fill="true"]:not([data-telo-part="chat"], :has([data-fill="true"]), :is([data-surface="inline"], [data-surface="panel"], [data-telo-part="table-row"], [data-telo-part="list-item"], [data-telo-part="card"], [data-telo-part="board-card"], [data-telo-part="calendar-event"], [data-telo-part="timeline-bar"], [data-telo-part="tree-item"], [data-telo-part="action-result"], [data-telo-part="action-failure"], [data-telo-part="row-answer"], [data-telo-part="row-failure"], [data-telo-part="listing-empty"], [data-telo-part="chat-header"], [data-telo-part="aside-actions"]) [data-fill="true"]) { overflow-y: auto; }
+  :is([data-telo-part="page"][data-fill="true"], [data-surface="drawer"]) [data-fill="true"]:not([data-telo-part="chat"], :has([data-fill="true"]), :is([data-surface="inline"], [data-surface="panel"], [data-telo-part="table-row"], [data-telo-part="list-item"], [data-telo-part="card"], [data-telo-part="board-card"], [data-telo-part="calendar-event"], [data-telo-part="timeline-bar"], [data-telo-part="tree-item"], [data-telo-part="mutation-result"], [data-telo-part="mutation-failure"], [data-telo-part="listing-empty"], [data-telo-part="chat-header"], [data-telo-part="aside-actions"]) [data-fill="true"]) { overflow-y: auto; }
   :is([data-telo-part="box"], [data-telo-part="query"])[data-fill="true"] { display: flex; flex-direction: column; }
   [data-telo-part="columns"][data-fill="true"] { align-items: stretch; }
   [data-telo-part="columns"][data-fill="true"] > [data-telo-part="column"] { display: flex; flex-direction: column; }

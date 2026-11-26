@@ -245,7 +245,9 @@ placement.
 
 - `commit` — a choice applies at once; typed text when it is committed, by
   Enter or by leaving the field.
-- `typing` — a choice applies at once; typed text after a short pause.
+- `typing` — a choice applies at once; typed text after the typing pause, by the
+  [settle rule](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/) a
+  form's settled record follows too.
 - `button` — what is typed or picked in a filter's control waits for the
   bar's Apply button. A preset, Reset and removing a filter through a summary
   chip do not wait: each reaches the list when it is made, and applies with it

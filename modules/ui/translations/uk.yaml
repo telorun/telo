@@ -7,6 +7,8 @@ messages:
   noRows: Немає рядків.
   nothingFound: Нічого не знайдено.
   save: Зберегти
+  saving: Збереження…
+  retry: Спробувати ще раз
   cancel: Скасувати
   close: Закрити
   newRecord: Створити

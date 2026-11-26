@@ -36,14 +36,14 @@ by a React renderer this module ships prebuilt.
   condition. A node's `shown`
   is decided in the browser over the answer, the page's query parameters or a
   form's values; hidden content keeps what it holds and requests nothing.
-- **Operations that answer in place.** An action draws its answer, or why it
-  failed, under its form; a row's action, a [`button`](docs/app.md#buttons)
-  bound to the page's data and a control on an item of
-  [Markdown text](docs/markdown.md#annotations) draw theirs in place of their
-  button. A prompt completes the bound record and holds it whole to the input
-  model before sending; a value one prompt keeps opens the next of its key. A
-  success refreshes the queries and listings it changed and can move the page,
-  and a serial action's presses run one after another.
+- **Operations that answer in place.** A mutation is declared once and run from
+  anywhere: a row, a [`button`](docs/app.md#buttons) bound to the page's data, a
+  control on an item of [Markdown text](docs/markdown.md#annotations), a layout's
+  move or a form. Each call draws its answer, or why it failed, where it ran; a
+  prompt asks for entries and holds the record whole to the input model before
+  sending. A success reads again the queries and listings it invalidated, then
+  runs its effects in order — moving the page, or opening one — and a serial
+  mutation's calls run one after another.
 - **Times as people read them.** A [`time`](docs/app.md#times) draws "3 hours
   ago" with the exact time on hover, kept current while shown, or a date in
   the viewer's language and zone.
@@ -96,11 +96,16 @@ by a React renderer this module ships prebuilt.
   storage](docs/urls.md#filter-state) when the bar says so. A filter over a
   related record offers those records by name, and can offer only the values
   present under the other filters, each with its count.
-- **Operations without a script.** A [`Ui.Action`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) is
-  drawn as a form and a button: the record is checked in the page, posted,
-  and the lists the action declares are drawn from the answer — links
+- **Operations without a script.** A form with an `onSubmit` is a form and a
+  button: the record is checked in the page against the mutation's input model,
+  sent, and the lists the write declares are drawn from the answer — links
   included. A listing offers the same operations on each record, with a question
   first where one is declared.
+- **Live preview and autosave.** A [query](docs/urls.md#queries) that names a
+  form reads again as the form's settled, valid values change, wherever on the
+  page the two are placed; a form with an `autosave` saves a draft as it is
+  edited — one write at a time, newest values last, a retry button after a
+  failure — and asks before it is left unsaved.
 - **Lists are entered, not just shown.** A list property is a group of options
   or typed tags, in every form.
 - **Served in the viewer's language.** Every text — page titles, labels, a

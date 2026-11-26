@@ -1,0 +1,17 @@
+kind: Telo.Application
+metadata: { name: UiInvalidAutosaveSuppliedApp, version: 1.0.0 }
+imports:
+  Ui: ../../../../../
+  Lib: { source: ./lib, resources: { save: !ref create } }
+  Probe: ../../../probe
+targets:
+  - invoke: !ref read
+---
+kind: Ui.Mutation
+metadata: { name: create }
+inputModel: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: false, properties: { title: { type: string } } } }
+url: /api/drafts
+---
+kind: Probe.Read
+metadata: { name: read }
+source: !ref Lib.supplied

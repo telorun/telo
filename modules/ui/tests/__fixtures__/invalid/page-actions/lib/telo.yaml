@@ -1,7 +1,7 @@
 # Readers whose button writes something `telo check` refuses on the line it was
-# written: a required input left unbound by a button that does not prompt, a
-# key the action does not take, an action whose form leaves a required
-# property out, and a read of a member the data does not declare. A consumer's
+# written: a required input left unbound, a key the mutation does not take, a
+# prompt whose fields leave a required entry out, and a read of a member the
+# data does not declare. A consumer's
 # own check sees none, so the button is refused when it is first read.
 kind: Telo.Library
 metadata:
@@ -9,7 +9,7 @@ metadata:
   version: 1.0.0
   description: >-
     Test fixture exporting readers whose buttons each read what their data or
-    their action cannot answer for.
+    their mutation cannot answer for.
 imports: { Ui: ../../../../../ }
 exports: { resources: [authorUnprompted, hashMisspelled, revisionTypo] }
 ---
@@ -30,7 +30,7 @@ schema:
           required: [seq, hash]
           properties: { seq: { type: integer }, hash: { type: string } }
 ---
-kind: Ui.Action
+kind: Ui.Mutation
 metadata: { name: decide }
 inputModel:
   kind: Telo.JsonSchema
@@ -39,8 +39,7 @@ inputModel:
     additionalProperties: false
     required: [revision, hash, author]
     properties: { revision: { type: integer }, hash: { type: string }, author: { type: string } }
-request: { target: /api/decisions }
-label: Decide
+url: /api/decisions
 ---
 kind: Ui.View
 metadata: { name: authorUnprompted }
@@ -52,9 +51,10 @@ content:
     url: /api/plan
   content:
     - type: button
-      action: !ref decide
-      inputs: { revision: !cel "data.plan.latestRevision.seq", hash: !cel "data.plan.latestRevision.hash" }
-      prompt: false
+      action:
+        mutation: !ref decide
+        inputs: { revision: !cel "data.plan.latestRevision.seq", hash: !cel "data.plan.latestRevision.hash" }
+        label: Decide
 ---
 kind: Ui.View
 metadata: { name: hashMisspelled }
@@ -66,36 +66,28 @@ content:
     url: /api/plan
   content:
     - type: button
-      action: !ref decide
-      inputs: { revision: !cel "data.plan.latestRevision.seq", hsh: !cel "data.plan.latestRevision.hash" }
-      prompt: true
+      action:
+        mutation: !ref decide
+        inputs: { revision: !cel "data.plan.latestRevision.seq", hsh: !cel "data.plan.latestRevision.hash", author: !cel "prompt.author" }
+        label: Decide
+        prompt: !ref author
 ---
-# Its form enters `author` alone, so `id` could never be sent, whatever binds it.
-kind: Ui.Action
+kind: Ui.Prompt
+metadata: { name: author }
+model:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [author], properties: { author: { type: string } } }
+---
+# It enters `author` alone, so `note` could never be sent.
+kind: Ui.Prompt
 metadata: { name: commentIncomplete }
-inputModel:
+model:
   kind: Telo.JsonSchema
   schema:
     type: object
-    required: [id, author]
-    properties: { id: { type: string }, author: { type: string } }
-request: { target: /api/comments }
-label: Comment
+    required: [author, note]
+    properties: { author: { type: string }, note: { type: string } }
 fields: [author]
----
-kind: Ui.View
-metadata: { name: commentBound }
-content:
-  type: query
-  query:
-    kind: Ui.Query
-    model: !ref PlanDetail
-    url: /api/plan
-  content:
-    - type: button
-      action: !ref commentIncomplete
-      inputs: { id: !cel "data.plan.id" }
-      prompt: true
 ---
 kind: Ui.View
 metadata: { name: revisionTypo }
@@ -107,8 +99,11 @@ content:
     url: /api/plan
   content:
     - type: button
-      action: !ref decide
-      inputs:
-        revision: !cel "data.plan.latestRevison.seq"
-        hash: !cel "data.plan.latestRevision.hash"
-      prompt: true
+      action:
+        mutation: !ref decide
+        inputs:
+          revision: !cel "data.plan.latestRevison.seq"
+          hash: !cel "data.plan.latestRevision.hash"
+          author: !cel "prompt.author"
+        label: Decide
+        prompt: !ref author

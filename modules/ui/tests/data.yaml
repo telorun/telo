@@ -10,7 +10,7 @@ metadata:
     written, each `value` and `list` node carrying what the model, the query
     parameters or the request error say about the values it names. `loading`
     and `failure` left out are filled by `ui`. A form's field carries its
-    `shown` and an action its `enabled`, unchanged.
+    `shown` and a form's submit its `enabled`, unchanged.
 imports:
   Ui: ../
   DataModel: ../../data-model
@@ -100,17 +100,24 @@ fields:
     property: detail
     shown: { at: !cel "values.title", matches: { minLength: 1 } }
 ---
-kind: Ui.Action
+kind: Ui.Form
 metadata: { name: send }
-inputModel:
+model:
   kind: Telo.JsonSchema
   schema: { type: object, properties: { to: { type: string } } }
-request: { target: /api/send }
-label: Send
-enabled:
-  at: !cel "values.to"
-  matches: { type: string, minLength: 3 }
-  disabledText: Enter a recipient first.
+onSubmit:
+  mutation:
+    kind: Ui.Mutation
+    inputModel:
+      kind: Telo.JsonSchema
+      schema: { type: object, properties: { to: { type: string } } }
+    url: /api/send
+  inputs: { to: !cel "values.to" }
+  label: Send
+  enabled:
+    at: !cel "values.to"
+    matches: { type: string, minLength: 3 }
+    disabledText: Enter a recipient first.
 ---
 kind: Telo.Sequence
 metadata: { name: main }
@@ -126,6 +133,7 @@ steps:
         fill: false
         query:
           id: UiDataTest/account/content/query
+          form: null
           schema:
             type: object
             required: [authorized]
@@ -198,6 +206,7 @@ steps:
         fill: false
         query:
           id: UiDataTest/plain/content/query
+          form: null
           schema: { type: object }
           method: GET
           url: { path: { value: /api/plain }, pathParams: {}, queryParams: {} }
@@ -234,7 +243,7 @@ steps:
   - name: sendEnabled
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.send.result.node.enabled"
+      actual: !cel "steps.send.result.node.onSubmit.enabled"
       expected:
         at: { root: values, path: [to] }
         matches: { type: string, minLength: 3 }

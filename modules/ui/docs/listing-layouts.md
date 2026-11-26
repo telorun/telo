@@ -82,7 +82,7 @@ its own, so a compact layout cannot be nested.
 - **`parent`** — the property holding the key of a record's parent, a relation
   of the collection to itself. The roots are read with `<parent>.absent=true`,
   an expanded record's children with `<parent>=<key>`.
-- **`move`** — a [`Ui.BoundAction`](action.md#bound-actions) over `row`, the record
+- **`move`** — a [`Ui.Move`](mutation.md#uimove) over `row`, the record
   as read, and `to`, the record as the gesture leaves it (typed from `row`).
 
 `groups.property`, `span.start` / `end` and `parent` are property names, as a
@@ -93,25 +93,31 @@ collection's `query.filters[].property` is, because they are sent on the wire.
 Dragging a card to another column, rescheduling or resizing an event, and
 reparenting a tree item are one gesture: the layout's `move`. The gesture fills
 `to` — the record with the column's value, the new dates, the new parent — and
-runs the action with the inputs written over `row` and `to`:
+runs the mutation with the inputs written over `row` and `to`:
 
 ```yaml
 layout:
   kind: Ui.BoardLayout
   groups: { property: status }
   move:
-    action: !ref setTaskStatus
+    mutation: !ref setTaskStatus
     inputs:
       id: !cel "row.id"
       status: !cel "to.status"
+    failure: { type: text, text: Not moved. }
 ```
 
 - It is never a replace through the edit page's form, which would lose one of two
   concurrent moves.
-- `inputs` is checked as a call site of the action, as a row action's is:
+- A `Ui.Move` is a call without a button: it has no `label` — the "Move to" menu
+  names the target — and no `result`, since the success is the record in its new
+  place; a `label` or `result` there is `SCHEMA_VIOLATION`. `confirm`, `prompt`,
+  `enabled` and `onSuccess` work as on a [call](mutation.md#calls), and its
+  `failure` is drawn on the record.
+- `inputs` is checked as a call site of the mutation, as a row action's is:
   `CONTRACT_INPUTS_MISMATCH`, `CEL_UNKNOWN_FIELD`, `CEL_TYPE_ERROR` and
   `ACCESSOR_NOT_PLAIN_CHAIN` at `telo check`, and
-  `ERR_UI_BOUND_ACTION_INPUTS_INVALID` when the listing is first read.
+  `ERR_UI_MUTATION_CALL_INPUTS_INVALID` when the listing is first read.
 - A 2xx answer is a change to the collection: every listing over its source's
   `basePath` [reloads](listing.md#reloading).
 - Every move has a keyboard path: each record's "Move to" menu (the renderer's
@@ -348,5 +354,6 @@ without `end`, tree roots and children, the next page, a reload — are pinned b
 | `tree` | `content`, `move?` |
 | `component` | `module`, `export`, `abi?`, `external`, `stylesheets`, `props`, `move?` |
 
-`move` is a row action as a renderer receives it, its action provided. `ui`
+`move` is a [move spec](mutation.md#what-a-renderer-receives) — a call without
+`label` and `result`. `ui`
 fills every default, so a renderer reads none of its own.

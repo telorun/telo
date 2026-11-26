@@ -29,9 +29,11 @@ import {
 } from "./resource-schema-form/ref-candidates";
 import { PickCanvas } from "./views/pick-canvas";
 import { DetailYamlPane } from "./DetailYamlPane";
+import { canDeleteSelection } from "./resource-delete";
+import { selectionTitle } from "./selection-title";
 import { ExtractInlineDialog } from "./ExtractInlineDialog";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
-import { FileOutput, Sparkles, X } from "lucide-react";
+import { FileOutput, Sparkles, Trash2, X } from "lucide-react";
 import { askAboutResourcePrompt, useAgentCompose } from "../agent";
 
 type DetailMode = "form" | "yaml";
@@ -40,6 +42,9 @@ interface DetailPanelProps {
   /** Dismisses the panel. Where given, the panel covers the editor at phone
    *  width instead of sharing a row with it. */
   onClose?: () => void;
+  /** Deletes the selected resource from its module. Absent where deleting is
+   *  not possible (a read-only module). */
+  onDelete?: () => void;
   selectedResource: { kind: string; name: string } | null;
   selection: Selection | null;
   /** True while the module cannot be edited (remote, or the agent holds it).
@@ -139,6 +144,7 @@ export function DetailPanel({
   onSelect,
   onCreateAndLink,
   onClose,
+  onDelete,
 }: DetailPanelProps) {
   // Sticky across selections and resources: the choice is about how the user
   // wants to work, not about what is selected, so re-deriving it per selection
@@ -470,9 +476,7 @@ export function DetailPanel({
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-zinc-100 px-3 dark:border-zinc-800">
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate text-xs font-semibold text-zinc-800 dark:text-zinc-200">
-            {selectionContext && selectionContext.pointer
-              ? `${resource.name} • ${selectionContext.pointer}`
-              : resource.name}
+            {selectionTitle(resource, selectionContext?.pointer ?? "")}
           </span>
           {/* The kind being EDITED. For an inline declaration that is its own
               kind, not the host's — the host is already named to the left. */}
@@ -514,6 +518,20 @@ export function DetailPanel({
             >
               <Sparkles className="size-3" />
               Ask AI
+            </button>
+          )}
+          {onDelete &&
+            !readOnly &&
+            !selectionContext?.inlineKind &&
+            canDeleteSelection(resource, selectionContext?.pointer ?? "") && (
+            <button
+              type="button"
+              onClick={onDelete}
+              title="Delete this resource"
+              aria-label="Delete"
+              className="flex shrink-0 items-center rounded border border-zinc-200 p-1 text-zinc-600 hover:border-red-300 hover:text-red-700 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-red-700 dark:hover:text-red-300"
+            >
+              <Trash2 className="size-3" />
             </button>
           )}
         </div>

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, type Rendered } from "./harness.js";
-import { commentSchema, operation, promptOf } from "./spec-nodes.js";
+import { call, commentSchema, promptOf } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => {
@@ -89,7 +89,10 @@ describe("the markdown node", () => {
 
 /** The text a review shows: a heading, a list of two items, a fenced block, ten lines. */
 const plan = "# Plan\n\n## S1 Split\n\n- S1.1 one file\n- S1.2 two files\n\n```\n- S1.3 not an item\n```";
-const comment = operation("/api/plans/p7/comments", "Comment", commentSchema);
+const comment = call("/api/plans/p7/comments", "Comment", commentSchema, {
+  inputs: { id: { value: "p7" }, revision: { value: 3 }, item: { root: "row", path: ["id"] }, author: { root: "prompt", path: ["author"] }, body: { root: "prompt", path: ["body"] } },
+  prompt: promptOf(commentSchema, ["author", "body"]),
+});
 const row = (...path: string[]) => ({ root: "row", path });
 
 /** A markdown node over the plan, its annotations over `items`, once drawn. */
@@ -101,7 +104,7 @@ async function annotated(items: Record<string, unknown>[]): Promise<HTMLElement>
       rows: { value: items },
       line: row("line"),
       count: row("count"),
-      action: { action: comment, inputs: { id: { value: "p7" }, revision: { value: 3 }, item: row("id") }, prompt: promptOf(comment, ["author", "body"]) },
+      action: comment,
     },
   };
   rendered = await render({ path: "/", pages: { "/": { title: "Plan", children: [node as never] } } });

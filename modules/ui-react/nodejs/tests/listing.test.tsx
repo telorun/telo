@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import archiveRequest from "../../tests/__fixtures__/action/archive-request.json" with { type: "json" };
+import archiveRequest from "../../tests/__fixtures__/mutation/archive-request.json" with { type: "json" };
 import { loadFixtureComponents, render, type Rendered } from "./harness.js";
 import { FakeIntersections } from "./intersections.js";
-import { filterField, filtersNode, memoryState, operation, listingNode, pressOpening, recordPages, todos, address, navigateTo } from "./spec-nodes.js";
+import { buttonOf, call, filterField, filtersNode, memoryState, listingNode, pressOpening, promptOf, recordPages, todos, address, navigateTo } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -15,18 +15,21 @@ const show = (children: unknown[], rows: Record<string, unknown>[] = todos) =>
 
 const row = (...path: string[]) => ({ root: "row", path });
 const archiving = (overrides: Record<string, unknown> = {}) =>
-  operation("/api/todos/archive", "Archive", { type: "object", properties: { id: { type: "integer" }, status: { type: "string" }, reason: { type: "string" } } }, overrides);
-const archive = { action: archiving(), inputs: { id: row("id"), status: { value: "archived" }, reason: row("reason") } };
-const rename = { action: operation("/api/todos/rename", "Rename", { type: "object", properties: { text: { type: "string" } } }), inputs: { text: row("text") }, confirm: "Rename this task?" };
-/** An operation whose dialog asks for a reason before it is sent. */
-const reject = {
-  action: operation("/api/todos/reject", "Reject", { type: "object", required: ["id"], properties: { id: { type: "integer" }, reason: { type: "string", title: "Reason", minLength: 3 } } }),
-  inputs: { id: row("id") },
+  call("/api/todos/archive", "Archive", { type: "object", properties: { id: { type: "integer" }, status: { type: "string" }, reason: { type: "string" } } }, {
+    inputs: { id: row("id"), status: { value: "archived" }, reason: row("reason") },
+    ...overrides,
+  });
+const archive = archiving();
+const rename = call("/api/todos/rename", "Rename", { type: "object", properties: { text: { type: "string" } } }, { inputs: { text: row("text") }, confirm: "Rename this task?" });
+const rejectSchema = { type: "object", required: ["id"], properties: { id: { type: "integer" }, reason: { type: "string", title: "Reason", minLength: 3 } } };
+/** A call whose dialog asks for a reason before it is sent. */
+const reject = call("/api/todos/reject", "Reject", rejectSchema, {
+  inputs: { id: row("id"), reason: { root: "prompt", path: ["reason"] } },
   confirm: "Reject this task?",
-  prompt: { fields: [{ type: "input", control: "auto", property: "reason", label: "Reason" }] },
-};
+  prompt: promptOf(rejectSchema, ["reason"]),
+});
 /** The values a row's failure tree draws: the error's code and message. */
-const failureOf = (r: Rendered, at = 0) => [...r.parts("row-failure")[at].querySelectorAll('[data-telo-part="value"]')].map((value) => value.textContent);
+const failureOf = (r: Rendered, at = 0) => [...r.parts("mutation-failure")[at].querySelectorAll('[data-telo-part="value"]')].map((value) => value.textContent);
 /** A table whose rows offer two operations, and nothing else unless told. */
 const acting = (overrides: Record<string, unknown> = {}) => listingNode({ rowActions: [archive, rename], create: null, edit: null, delete: false, ...overrides });
 /** A table whose one row holds an address, in an application of two pages. */
@@ -397,7 +400,7 @@ describe("a table", () => {
     expect(lists(rendered).length).toBeGreaterThan(before);
     // The refused row draws its failure beside its button, which stays.
     expect(failureOf(rendered)).toEqual(["ERR_REFERENCED", "It is referenced."]);
-    expect(rendered.parts("row-failure")[0].closest('[data-telo-part="table-row"]')).toBe(rendered.parts("table-row")[1]);
+    expect(rendered.parts("mutation-failure")[0].closest('[data-telo-part="table-row"]')).toBe(rendered.parts("table-row")[1]);
   });
 
   it("draws a row's answer in place of its button, keeps it through the reload its success triggers, and drops it when the row leaves the page", async () => {
@@ -405,33 +408,32 @@ describe("a table", () => {
       answer: { type: "object", properties: { receipt: { type: "string", format: "uri-reference" } } },
       result: { type: "value", value: { root: "result", path: ["receipt"] }, present: { type: "string", format: "uri-reference" }, text: "Receipt" },
     });
-    rendered = await show([acting({ rowActions: [{ ...archive, action: answering }] })]);
+    rendered = await show([acting({ rowActions: [answering] })]);
     rendered.answer("/api/todos/archive", () => new Response(JSON.stringify({ receipt: "/files/receipt-1.pdf" }), { status: 200 }));
     const before = lists(rendered).length;
     await rendered.click(rendered.parts("row-action")[0]);
     expect(lists(rendered)).toHaveLength(before + 1);
-    const answer = rendered.part("row-answer");
+    const answer = rendered.part("mutation-result");
     expect(answer.closest('[data-telo-part="table-row"]')).toBe(rendered.parts("table-row")[0]);
     expect([...answer.querySelectorAll("a")].map((link) => [link.textContent, link.getAttribute("href")])).toEqual([["Receipt", "/files/receipt-1.pdf"]]);
     expect(rendered.parts("row-action").map((button) => button.closest('[data-telo-part="table-row"]'))).toEqual([rendered.parts("table-row")[1]]);
     await rendered.click(rendered.part("pager-next"));
-    expect(rendered.parts("row-answer")).toEqual([]);
+    expect(rendered.parts("mutation-result")).toEqual([]);
     await rendered.click(rendered.part("pager-prev"));
-    expect(rendered.parts("row-answer")).toEqual([]);
+    expect(rendered.parts("mutation-result")).toEqual([]);
     expect(rendered.parts("row-action")).toHaveLength(2);
   });
 
-  it("enables a row's button by the row action's own condition over the row, never by the action's", async () => {
-    const action = archiving({ enabled: { at: { value: 1 }, matches: { const: 2 }, disabledText: "Never." } });
+  it("enables a row's button by the call's own condition over the row", async () => {
     const enabled = { at: row("isDone"), matches: { const: false }, disabledText: "Already done." };
-    rendered = await show([acting({ rowActions: [{ ...archive, action, enabled }] })]);
+    rendered = await show([acting({ rowActions: [archiving({ enabled })] })]);
     expect(rendered.parts("row-action").map((button) => (button as HTMLButtonElement).disabled)).toEqual([true, false]);
     expect(rendered.parts("disabled-text").map((text) => [text.textContent, text.closest('[data-telo-part="table-row"]')])).toEqual([["Already done.", rendered.parts("table-row")[0]]]);
   });
 
   it("orders the presses of a serial action on the page: the second row's waits for the first's", async () => {
     const finishes: ((response: Response) => void)[] = [];
-    rendered = await show([acting({ rowActions: [{ ...archive, action: archiving({ concurrency: "serial" }) }] })]);
+    rendered = await show([acting({ rowActions: [archiving({ concurrency: "serial" })] })]);
     rendered.answer("/api/todos/archive", () => new Promise<Response>((resolve) => finishes.push(resolve)));
     await rendered.click(rendered.parts("row-action")[0]);
     await rendered.click(rendered.parts("row-action")[1]);
@@ -500,7 +502,7 @@ describe("a table", () => {
     rendered.answer("/api/todos/archive", () => new Response(null, { status: 204 }));
     await rendered.click(rendered.parts("row-action")[0]);
     expect(rendered.sent.map((each) => each.request)).toEqual(["POST /api/todos/archive", "POST /api/todos/archive"]);
-    expect(rendered.parts("row-failure")).toEqual([]);
+    expect(rendered.parts("mutation-failure")).toEqual([]);
     expect(lists(rendered)).toHaveLength(before + 1);
   });
 
@@ -511,7 +513,7 @@ describe("a table", () => {
     await rendered.click(confirming());
     const dialog = confirmation() as HTMLElement;
     expect([dialog.querySelector('[data-telo-part="error-code"]')?.textContent, dialog.querySelector('[data-telo-part="error-message"]')?.textContent]).toEqual(["ERR_TAKEN", "That name is taken."]);
-    expect(rendered.parts("row-failure")).toEqual([]);
+    expect(rendered.parts("mutation-failure")).toEqual([]);
     rendered.answer("/api/todos/rename", () => new Response(null, { status: 204 }));
     await rendered.click(confirming());
     expect(confirmation()).toBeNull();
@@ -774,7 +776,7 @@ describe("a listing over a templated path", () => {
       edit: undefined,
       delete: false,
     });
-  const sendTo = (runner: string) => operation(`/api/runners/${runner}/commands`, `Send to ${runner}`, { type: "object", properties: {} }, { fields: [], state: memoryState([]) });
+  const sendTo = (runner: string) => buttonOf(call(`/api/runners/${runner}/commands`, `Send to ${runner}`, { type: "object", properties: {} }));
   const showRunner = (children: unknown[]) =>
     render({
       path: "/runners/a",
@@ -786,9 +788,9 @@ describe("a listing over a templated path", () => {
   it("reads the path its page's variables fill, and reloads on a write under that path and no other", async () => {
     rendered = await showRunner([runnerListing({ root: "params", path: ["name"] }), sendTo("b"), sendTo("a")]);
     expect([reads(rendered, "a"), reads(rendered, "b"), cells(rendered, 0)]).toEqual([["GET /api/runners/a/commands?limit=2"], [], ["a first"]]);
-    await rendered.click(rendered.parts("submit")[0]);
+    await rendered.click(rendered.parts("button")[0]);
     expect(reads(rendered, "a")).toHaveLength(1);
-    await rendered.click(rendered.parts("submit")[1]);
+    await rendered.click(rendered.parts("button")[1]);
     expect(reads(rendered, "a")).toHaveLength(2);
   });
 

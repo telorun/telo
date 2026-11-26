@@ -1,0 +1,50 @@
+# CRUD: the admin screen `CrudUi.Admin` generates over the tasks collection
+# `crud` serves, with a filter policy and surfaces of its own. Every application
+# places this view on its `/crud` page.
+kind: Ui.View
+metadata: { name: crudPage }
+content:
+  type: stack
+  children:
+    - { type: text, text: A generated admin screen, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        One declaration over the tasks collection the API is served from: a filter bar, a sortable paged table,
+        a form to add a task and one to change it, and a confirmed delete on every row. The columns, the fields
+        and the filters are all derived from the collection, so the screen offers exactly what the API accepts.
+    - type: text
+      style: muted
+      text: >-
+        The bar sits beside the table at the end edge and shows only the filters you choose, each as a chip that
+        opens its control. It keeps its choice in this browser under the key aside — the key of the bar beside
+        the table on the Filters page, so a filter chosen on either page is chosen on both.
+    - type: text
+      style: muted
+      text: >-
+        A new task opens in a drawer from the end edge and stays open, emptied, for the next one. A task is
+        changed in a panel beside the list, which is part of the address, and leaving it with unsaved input asks
+        first.
+    - type: composite
+      ref: &adminScreen
+        kind: CrudUi.Admin
+        source: !ref tasksSource
+        filters:
+          placement: { kind: Ui.AsidePlacement, side: end, show: chosen, controls: chips, summary: chips }
+          state: { key: aside, store: { kind: Ui.LocalStore } }
+        create: { to: { kind: Ui.OpenPage, page: !ref newTaskPage, surface: { kind: Ui.Drawer, side: end } } }
+        edit:
+          to:
+            kind: Ui.OpenPage
+            page: !ref taskPage
+            pathParams: { id: !cel "row.id" }
+            surface: { kind: Ui.Panel, address: { name: crudTask } }
+    - { type: composite, ref: { kind: Ui.Component, component: !ref Components.sourceSnippet, props: { file: crud.yaml, anchor: adminScreen } } }
+---
+# The page every application lists at /crud, placing the view.
+kind: Ui.Page
+metadata: { name: crudScreen }
+path: /crud
+title: CRUD
+children:
+  - { type: composite, ref: !ref crudPage }

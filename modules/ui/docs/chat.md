@@ -16,7 +16,7 @@ the list of past conversations is an ordinary [listing](listing.md) beside it
 | `buttons` | optional | how each button is drawn: `{ copy, edit, regenerate, attach, send, stop }`, each a [`Ui.TextButton` or `Ui.IconButton`](#buttons-as-icons) |
 | `composer` | optional | `{ actions }`: `inside` (default) puts the attach and send (or stop) buttons inside the message box's frame, after the text; `outside` puts them in a row under the box |
 | `conversation` | optional | `{ parameter }`: the page query parameter holding the id of the conversation shown, a name like a page query parameter's. Omitted, the choice lives in memory and a reload starts a new conversation |
-| `refreshes` | optional | requests read again, as an action's [`onSuccess.refreshes`](action.md#after-a-success) (a `*` / `**` segment covers several paths), over `conversation.id`, the id of the conversation the send or the turn belongs to |
+| `invalidates` | optional | requests read again, as a mutation's [`invalidates`](mutation.md#invalidation) (a `*` / `**` segment covers several paths), over `conversation.id`, the id of the conversation the send or the turn belongs to |
 
 `placeholder` and each starter's `prompt` are [texts](texts.md) with no values,
 written in the module's `lang:`.
@@ -103,7 +103,7 @@ header:
 
 Omitted, the header is one `bar` whose `end` holds `exportTranscript`, drawn by
 `ui`'s keyed text `chatExport`. `header: []` draws no header at all. A link and
-a [`Ui.Action`](action.md) work there as anywhere: a link's address may read
+a [`button`](nodes.md#buttons) running a [call](mutation.md#calls) work there as anywhere: a link's address may read
 `conversation.id`, and a link to the page itself with no query parameter opens a
 new conversation when the chat follows the address.
 
@@ -162,7 +162,7 @@ each default:
 | `buttons` | all six keys, each `{ type: text }` or `{ type: icon, icon, label }`: `icon` an `{ digest, name }` file address or `null` (the look's glyph), `label` `shown` or `hidden`. A `copy`, `edit` or `regenerate` left out is `{ type: icon, icon: null, label: hidden }`, any other `{ type: text }` |
 | `composer` | `{ actions }`, `inside` or `outside` |
 | `conversation` | `{ parameter }`, or `null` when the choice lives in memory |
-| `refreshes` | the [address](nodes.md#addresses) wires of `refreshes`, `[]` when none; read over the root `conversation` (`{ id }`) |
+| `invalidates` | the [address](nodes.md#addresses) wires of `invalidates`, `[]` when none; read over the root `conversation` (`{ id }`) |
 | `style`, `shown`, `fill` | as every [node](nodes.md) |
 
 An icon's file travels in the chat composite's `assets`, addressed by its
@@ -190,7 +190,7 @@ How the chat shows a failed request is the client's behaviour:
 - A problem without a `code` falls back to `ERR_UI_UNAUTHORIZED` (401),
   `ERR_UI_FORBIDDEN` (403) or `ERR_UI_REQUEST_FAILED`.
 - A `2xx` body the contract refuses is `ERR_UI_RESPONSE_INVALID`, as for
-  [actions](action-contract.md) and [records](record-contract.md).
+  [mutations](mutation-contract.md) and [records](record-contract.md).
 - A dropped event stream is resumed with `Last-Event-ID`; an `error` event is
   shown in place with its code.
 
@@ -202,7 +202,7 @@ for `Conversation.conversations`, in a [`Ui.SplitView`](split-view.md) that fold
 it away on a narrow viewport. A row links to the page with the conversation in the
 parameter the chat names, "New conversation" is a link to the page itself, a
 delete is the listing's own `delete`, rename and archive are
-[`PATCH` row actions](action.md), and the running mark is a `badge` shown over
+[`PATCH` row actions](mutation.md#uimutationcall), and the running mark is a `badge` shown over
 `row.running`.
 
 ```yaml
@@ -244,7 +244,7 @@ children:
           kind: Ui.Chat
           source: { kind: Ui.ConversationSource, conversation: !ref conversation, basePath: /api/chat }
           conversation: { parameter: conversation }
-          refreshes: [/api/chat/conversations]
+          invalidates: [/api/chat/conversations]
         fill: true
 ```
 
@@ -269,17 +269,17 @@ With `conversation: { parameter }` the chat reads that parameter of the address:
   nothing, and the parameter is kept.
 
 The chat reads `<basePath>/conversations/<id>`, so a rename, archive or delete of
-the shown conversation, announced by an action or a listing, reads it again (a
-deleted one is drawn as not found). Its `refreshes` are announced when a send is
+the shown conversation, announced by a mutation or a listing, reads it again (a
+deleted one is drawn as not found). Its `invalidates` are announced when a send is
 admitted and when a turn the chat started or followed ends, whatever its reason;
-a listing of the collection at `refreshes`' path then shows the new conversation
+a listing of the collection at `invalidates`' path then shows the new conversation
 and its running mark.
 
 ## Checked before the app runs
 
-`refreshes` entries take wildcard segments as an action's
-[do](action.md#after-a-success) (`/api/chat/conversations/**`), and are checked
-as an action's are: an entry reading anything but
+`invalidates` entries take wildcard segments as a mutation's
+[do](mutation.md#invalidation) (`/api/chat/conversations/**`), and are checked
+as a mutation's are: an entry reading anything but
 `conversation.id` is `CEL_UNKNOWN_FIELD`, and a `parameter` that is not a query
 parameter name is `SCHEMA_VIOLATION`. A chat given `title`, `show.export`,
 `buttons.export`, `show.sidebar`, `compact` or `buttons.newConversation`, which

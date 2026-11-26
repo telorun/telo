@@ -93,7 +93,7 @@ steps:
         answered: !cel "steps.build.result.body.reports.map(r, r.name == steps.build.result.body.name)"
         recent: !cel "steps.recent.result.body.reports == steps.build.result.body.reports"
         uiTitle: !cel "steps.uiPage.result.body.title"
-        uiActions: !cel "steps.uiPage.result.body.children.filter(c, c.type == 'action').map(c, [c.label, c.request.target.path.value, c.result.columns.map(col, col.header)])"
+        uiActions: !cel "steps.uiPage.result.body.children.filter(c, c.type == 'button').map(c, [c.action.label, c.action.mutation.url.path.value, c.action.result.columns.map(col, col.header)])"
       expected:
         answered: [ true, false ]
         recent: true

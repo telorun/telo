@@ -4,6 +4,10 @@ import type { AddressInfo } from "node:net";
 import type { DebugEvent, DebugFrame } from "@telorun/debug-wire";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { FakeSupervisor } from "../supervisor/fake-supervisor.js";
+import { openPortForward } from "../supervisor/port-forward-stream.js";
+import { SUPERVISOR_GENERATION } from "../supervisor/supervisor-protocol.js";
+import { openInspectSocket } from "./inspect-socket.js";
 import { DEBUG_FRAME_MAX_BYTES, relayDebugStream } from "./relay.js";
 
 let server: Server | undefined;
@@ -18,14 +22,14 @@ function sse(id: number, frame: DebugFrame): string {
 }
 
 /** Serves the frames once, in chunks of `chunk` bytes, then holds the stream open. */
-async function serve(frames: string[], chunk: number): Promise<string> {
+async function serve(frames: string[], chunk: number): Promise<number> {
   server = createServer((_req, res) => {
     res.writeHead(200, { "content-type": "text/event-stream" });
     const text = frames.join("");
     for (let at = 0; at < text.length; at += chunk) res.write(text.slice(at, at + chunk));
   });
   await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
-  return `http://127.0.0.1:${(server!.address() as AddressInfo).port}/events`;
+  return (server!.address() as AddressInfo).port;
 }
 
 describe("the debug relay", () => {
@@ -41,12 +45,12 @@ describe("the debug relay", () => {
     expect(bigText.length).toBeGreaterThan(DEBUG_FRAME_MAX_BYTES);
     const before: DebugEvent = { kind: "event", timestamp: "2026-10-24T20:38:36.000Z", event: "Kernel.Starting" };
     const after: DebugEvent = { kind: "event", timestamp: "2026-10-24T20:38:39.000Z", event: "Kernel.Stopped" };
-    const url = await serve([sse(1, before), bigText, sse(3, after)], 64 * 1024);
+    const port = await serve([sse(1, before), bigText, sse(3, after)], 64 * 1024);
 
     const received: DebugFrame[] = [];
     const abort = new AbortController();
     const relayed = relayDebugStream({
-      url,
+      inspect: { listen: `127.0.0.1:${port}`, connect: (signal) => openInspectSocket("127.0.0.1", port, signal) },
       signal: abort.signal,
       onFrame: (frame) => {
         received.push(frame);
@@ -64,5 +68,36 @@ describe("the debug relay", () => {
       omitted: expect.stringContaining(`over the ${DEBUG_FRAME_MAX_BYTES} a runner relays`),
       bytes: bigText.length - 2,
     });
+  });
+
+  it("speaks the event stream's HTTP over a supervisor port forward, which is a stream and not a socket", async () => {
+    const before: DebugEvent = { kind: "event", timestamp: "2026-10-24T20:38:36.000Z", event: "Kernel.Starting" };
+    const after: DebugEvent = { kind: "event", timestamp: "2026-10-24T20:38:39.000Z", event: "Kernel.Stopped" };
+    const port = await serve([sse(1, before), sse(2, after)], 1024);
+    const supervisor = await FakeSupervisor.start({
+      host: "127.0.0.1",
+      port: 0,
+      token: "relay-token",
+      generation: SUPERVISOR_GENERATION,
+    });
+    try {
+      const received: DebugFrame[] = [];
+      const abort = new AbortController();
+      await relayDebugStream({
+        inspect: {
+          listen: `127.0.0.1:${port}`,
+          connect: (signal) =>
+            openPortForward({ host: "127.0.0.1", port: supervisor.port, token: "relay-token", target: port, signal }),
+        },
+        signal: abort.signal,
+        onFrame: (frame) => {
+          received.push(frame);
+          if (received.length === 2) abort.abort();
+        },
+      });
+      expect(received).toEqual([before, after]);
+    } finally {
+      await supervisor.close();
+    }
   });
 });

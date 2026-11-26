@@ -250,7 +250,19 @@ steps:
           oneSource: !cel "steps.people.result.node.basePath == steps.edited.result.node.fields[3].options.basePath"
       expected:
         create:
-          record: { basePath: /api/todos, key: null }
+          record:
+            basePath: /api/todos
+            key: null
+            answer:
+              type: object
+              required: [id, text]
+              properties:
+                id: { type: integer }
+                text: { type: string, title: Task, minLength: 1 }
+                isDone: { type: boolean }
+                dueOn: { type: [string, "null"], format: date }
+                ownerId: { type: integer }
+                owner: { type: object, properties: { name: { type: string } } }
           initialValues: null
           unsaved: confirm
           afterSubmit: close
@@ -259,7 +271,19 @@ steps:
             - { type: input, property: dueOn, label: { text: dueOn, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }
           picker: input
         edit:
-          record: { basePath: /api/todos, key: { value: 7 } }
+          record:
+            basePath: /api/todos
+            key: { value: 7 }
+            answer:
+              type: object
+              required: [id, text]
+              properties:
+                id: { type: integer }
+                text: { type: string, title: Task, minLength: 1 }
+                isDone: { type: boolean }
+                dueOn: { type: [string, "null"], format: date }
+                ownerId: { type: integer }
+                owner: { type: object, properties: { name: { type: string } } }
           initialValues: { value: { text: Ada, isDone: false } }
           unsaved: discard
           afterSubmit: again

@@ -8,6 +8,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json"
   },
+  "dependencies": {
+    "yaml": "^2.8.3"
+  },
   "devDependencies": {
     "@types/react": "^19",
     "@types/react-dom": "^19",

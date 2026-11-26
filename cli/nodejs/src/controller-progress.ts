@@ -54,7 +54,10 @@ export function attachControllerProgress(
   // lines into the payload.
   if (out.isJson) return;
   const isTty = Boolean(process.stdout.isTTY);
-  if (!options.force && !isTty) return;
+  if (!options.force && !isTty) {
+    attachPlainProgress(kernel, log, out);
+    return;
+  }
 
   type Pending = { linesBack: number };
   // Keyed by `<emitter-namespace> <purl>` (see `attemptKey`). Two
@@ -177,6 +180,47 @@ export function attachControllerProgress(
     const error: string = event?.payload?.error ?? "unknown error";
     const text = failedLine(purl, error);
     if (!purl || !rewritePending(attemptKey(event.name, purl), text)) out.line(text);
+  });
+}
+
+/**
+ * Piped output has no cursor to rewrite, so each wait is two lines on stderr —
+ * the human surface — `⬇ <purl> <work>…` when it begins and `✓ …` when it ends.
+ * A load that did no work reports nothing, so a warm start stays silent.
+ */
+function attachPlainProgress(kernel: Kernel, log: Logger, out: ReturnType<typeof output>): void {
+  const palette = log.err;
+  const waiting = new Set<string>();
+  const keyOf = (event: any, purl: string): string => {
+    const name: string = event.name;
+    const dot = name.lastIndexOf(".");
+    return `${dot >= 0 ? name.slice(0, dot) : ""} ${purl}`;
+  };
+
+  kernel.on("*.ControllerWorkStarted", (event: any) => {
+    const purl: string | undefined = event?.payload?.purl;
+    if (!purl) return;
+    const key = keyOf(event, purl);
+    if (waiting.has(key)) return;
+    waiting.add(key);
+    const work: string = event?.payload?.work ?? "working";
+    out.errLine(`  ${palette.dim("⬇")} ${formatPurl(purl)} ${palette.dim(`${work}…`)}`);
+  });
+
+  kernel.on("*.ControllerLoaded", (event: any) => {
+    const purl: string | undefined = event?.payload?.purl;
+    if (!purl || !waiting.delete(keyOf(event, purl))) return;
+    const source: string = event?.payload?.source ?? "unknown";
+    const ms: number | undefined = event?.payload?.durationMs;
+    const meta = ms !== undefined ? `(${source}, ${formatMs(ms)})` : `(${source})`;
+    out.errLine(`  ${palette.ok("✓")} ${formatPurl(purl)} ${palette.dim(meta)}`);
+  });
+
+  kernel.on("*.ControllerLoadFailed", (event: any) => {
+    const purl: string | undefined = event?.payload?.purl;
+    const error: string = event?.payload?.error ?? "unknown error";
+    if (purl) waiting.delete(keyOf(event, purl));
+    out.errLine(`  ${palette.error("✗")} ${purl ? formatPurl(purl) : "<unknown>"}: ${error}`);
   });
 }
 

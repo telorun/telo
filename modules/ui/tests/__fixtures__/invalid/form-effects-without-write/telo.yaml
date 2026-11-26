@@ -1,0 +1,20 @@
+# The effects after a submit need a submit write: the kernel refuses a form
+# that lists them with none, as `telo check` does.
+kind: Telo.Application
+metadata: { name: UiInvalidFormEffectsWithoutWriteApp, version: 1.0.0 }
+imports: { Ui: ../../../../, Probe: ../../probe }
+targets:
+  - invoke: !ref read
+---
+kind: Telo.JsonSchema
+metadata: { name: Draft }
+schema: { type: object, properties: { title: { type: string } } }
+---
+kind: Ui.Form
+metadata: { name: unwritten }
+model: !ref Draft
+onSuccess: [{ kind: Ui.Navigate, href: / }]
+---
+kind: Probe.Read
+metadata: { name: read }
+source: !ref unwritten

@@ -14,12 +14,15 @@ import { parseModuleDocument } from "../../../yaml-document";
 import type { RefResolver } from "../../resource-schema-form/ref-candidates";
 import {
   BOOT_FIELD,
+  bootAddCandidates,
+  bootInvokeConstraint,
   bootEntries,
   bootEntryLabel,
   bootEntryPointer,
   bootMarkers,
   bootToggleAction,
   canStartAtBoot,
+  withBootInvokeStep,
   withBootTarget,
   withoutBootEntries,
 } from "./boot-targets";
@@ -210,7 +213,115 @@ const APP = [
   "",
 ].join("\n");
 
+describe("what the Boot + offers", () => {
+  const resolver: RefResolver = {
+    acceptedKindsForRef: (target) =>
+      target === "Telo.Runnable"
+        ? new Set(["x.Job"])
+        : target === "Telo.Service"
+          ? new Set(["x.Server"])
+          : target === "Telo.Executable"
+            ? new Set(["x.Job", "x.Handler"])
+            : undefined,
+    resolveKind: (kind) => kind,
+  };
+  const moduleSchema = {
+    properties: {
+      targets: {
+        type: "array",
+        items: {
+          anyOf: [
+            { type: "string" },
+            {
+              type: "object",
+              properties: { invoke: { "x-telo-ref": { kind: "Telo.Executable", use: "call" } } },
+            },
+          ],
+        },
+      },
+    },
+  };
+
+  it("lists what a step's `invoke:` slot accepts as Call, imports' instances included, beside what is left to Start", () => {
+    const job = node("job", { kind: "x.Job" });
+    const server = node("server", { kind: "x.Server" });
+    const writeLine = node("Console.writeLine", {
+      name: "writeLine",
+      kind: "x.Handler",
+      external: true,
+      alias: "Console",
+    } as Partial<GraphNode>);
+    const other = node("other", { kind: "x.Other" });
+    const graph = graphOf(applicationRoot([targetRow(0, "job", "job")]), [
+      job,
+      server,
+      writeLine,
+      other,
+    ]);
+    expect(bootAddCandidates(graph, resolver, moduleSchema, bootEntries([ref("job")]))).toEqual({
+      start: ["server"],
+      call: ["Console.writeLine", "job"],
+    });
+  });
+});
+
+describe("bootInvokeConstraint", () => {
+  const bodyWith = (invoke: unknown, key: "anyOf" | "oneOf") => ({
+    properties: {
+      targets: {
+        type: "array",
+        items: { [key]: [{ type: "string" }, { type: "object", properties: { invoke } }] },
+      },
+    },
+  });
+
+  it("reads a union under oneOf and the bare-string x-telo-ref form", () => {
+    expect(bootInvokeConstraint(bodyWith({ "x-telo-ref": "Telo.Executable" }, "oneOf"))).toEqual([
+      "Telo.Executable",
+    ]);
+  });
+
+  it("reads a slot whose own type is a union of ref branches", () => {
+    const invoke = {
+      anyOf: [
+        { "x-telo-ref": { kind: "Telo.Invocable", use: "call" } },
+        { "x-telo-ref": { kind: "Telo.Runnable", use: "call" } },
+      ],
+    };
+    expect(bootInvokeConstraint(bodyWith(invoke, "anyOf"))).toEqual([
+      "Telo.Invocable",
+      "Telo.Runnable",
+    ]);
+  });
+
+  it("offers Call even where no Start constraint can be read", () => {
+    const resolver: RefResolver = {
+      acceptedKindsForRef: (target) => (target === "Telo.Executable" ? new Set(["x.Job"]) : undefined),
+      resolveKind: (kind) => kind,
+    };
+    const noStartRoot = { ...applicationRoot(), rowArrays: [] };
+    const graph = graphOf(noStartRoot, [node("job", { kind: "x.Job" })]);
+    const schema = bodyWith({ "x-telo-ref": "Telo.Executable" }, "anyOf");
+    expect(bootAddCandidates(graph, resolver, schema, [])).toEqual({ start: [], call: ["job"] });
+  });
+});
+
 describe("editing the boot sequence in the manifest", () => {
+  it("appends a call as `invoke: !ref <name>` with no inputs", () => {
+    let workspace = applicationWorkspace(APP);
+    const root = rootOf(workspace);
+    workspace = setModuleRootFields(workspace, PATH, root.kind, root.name, root.fields, {
+      ...root.fields,
+      [BOOT_FIELD]: withBootInvokeStep(root.fields[BOOT_FIELD], "Console.writeLine"),
+    });
+    expect(textOf(workspace)).toMatch(/- invoke: !ref Console\.writeLine\n$/);
+    expect(bootEntries(rootOf(workspace).fields[BOOT_FIELD]).at(-1)).toEqual({
+      index: 3,
+      form: "step",
+      target: "Console.writeLine",
+    });
+  });
+
   it("removes a started resource's entry and appends it back as `!ref <name>`", () => {
     let workspace = applicationWorkspace(APP);
     workspace = removeResourceFieldItem(workspace, PATH, "Telo.Application", "app", bootEntryPointer(0));

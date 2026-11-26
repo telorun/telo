@@ -7,6 +7,8 @@ messages:
   noRows: 행이 없습니다.
   nothingFound: 찾은 항목이 없습니다.
   save: 저장
+  saving: 저장 중…
+  retry: 다시 시도
   cancel: 취소
   close: 닫기
   newRecord: 새로 만들기

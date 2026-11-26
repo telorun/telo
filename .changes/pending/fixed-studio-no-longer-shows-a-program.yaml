@@ -1,0 +1,9 @@
+units:
+  apps/studio: Fixed
+body: "Studio no longer shows a program as running after it has finished: under watch
+  the run chip reads Finished or Failed and its timer stops. The runner terms now wrap
+  to the dialog, the graph's off-canvas drawer is titled and grouped by import alias
+  with kinds written as the module writes them, a lone node is no longer zoomed past its
+  natural size and stays in view when the detail panel opens, boot step selections get
+  readable headers, import search results are titled by module name, the boot add button
+  is titled Add to boot, and a deleted resource leaves the graph at once."

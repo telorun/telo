@@ -1,0 +1,20 @@
+kind: Telo.Application
+metadata:
+  name: UiFormEventsTest
+  version: 1.0.0
+  description: |
+    The live-forms application passes `telo check` clean: a preview form with
+    no collection and no button, a query and a team board following it through
+    `form`, a row button asking for a note through a prompt, a create page
+    opening the person it created from `result.id`, a button starting a draft,
+    and a draft editor autosaving a `PUT` and publishing through `onSubmit`
+    with optional `title` and `body` bound into required inputs. Its refusals
+    are pinned in `form-refusals.yaml`.
+imports: { Assert: ../../assert }
+targets:
+  - !ref liveForms
+---
+kind: Assert.Manifest
+metadata: { name: liveForms }
+source: ./__fixtures__/form-events/telo.yaml
+expect: { errors: [] }

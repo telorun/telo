@@ -6,11 +6,11 @@ metadata:
     A column's header and presentation come from the member it names however
     that member is reached: written in place, through a named shape, through a
     pointer into the model's own definitions, or through a shape a shape names
-    — for a list drawn from an action's answer and for a nested member of a
+    — for a list drawn from a form's answer and for a nested member of a
     listing's record alike, and for a table's derived column over a member that is itself
     a reference. What is written beside a reference wins over the shape it
     names. A reference that names nothing passes the check and is refused when
-    the action is first read.
+    the form is first read.
 imports:
   Ui: ../
   DataModel: ../../data-model
@@ -52,27 +52,32 @@ schema:
     local: { type: array, items: { $ref: "#/$defs/File" } }
     batch: !ref Batch
 ---
-kind: Ui.Action
+kind: Ui.Form
 metadata: { name: generate }
-inputModel: { kind: Telo.JsonSchema, schema: { type: object, properties: {} } }
-outputModel: !ref Answer
-request: { target: /api/reports }
-label: Generate
-result:
-  type: stack
-  children:
-    - type: list
-      rows: !cel "result.inline"
-      columns: [{ value: !cel "row.url" }]
-    - type: list
-      rows: !cel "result.named"
-      columns: [{ value: !cel "row.url" }]
-    - type: list
-      rows: !cel "result.local"
-      columns: [{ value: !cel "row.url" }]
-    - type: list
-      rows: !cel "result.batch.files"
-      columns: [{ value: !cel "row.url" }]
+model: { kind: Telo.JsonSchema, schema: { type: object, properties: {} } }
+onSubmit:
+  mutation:
+    kind: Ui.Mutation
+    inputModel: { kind: Telo.JsonSchema, schema: { type: object, properties: {} } }
+    outputModel: !ref Answer
+    url: /api/reports
+  inputs: {}
+  label: Generate
+  result:
+    type: stack
+    children:
+      - type: list
+        rows: !cel "result.inline"
+        columns: [{ value: !cel "row.url" }]
+      - type: list
+        rows: !cel "result.named"
+        columns: [{ value: !cel "row.url" }]
+      - type: list
+        rows: !cel "result.local"
+        columns: [{ value: !cel "row.url" }]
+      - type: list
+        rows: !cel "result.batch.files"
+        columns: [{ value: !cel "row.url" }]
 ---
 kind: Telo.JsonSchema
 metadata: { name: Report }
@@ -123,7 +128,7 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        lists: !cel "steps.generate.result.node.result.children.map(l, l.columns)"
+        lists: !cel "steps.generate.result.node.onSubmit.result.children.map(l, l.columns)"
         table: !cel "steps.reports.result.node.layout.columns"
         derived: !cel "steps.derived.result.node.layout.columns.filter(c, c.value.path == ['site'])"
       expected:
@@ -142,4 +147,4 @@ metadata: { name: danglingReference }
 source: ./__fixtures__/invalid/dangling-reference/telo.yaml
 expect:
   errors: []
-  runFails: "Ui.Action 'danglingReference' result: 'Ui.Action 'danglingReference' result.rows.items' holds a reference ('#/$defs/File') that does not name a data shape. Declare that shape, or correct the reference."
+  runFails: "Ui.Form 'danglingReference' onSubmit.result: 'Ui.Form 'danglingReference' onSubmit.result.rows.items' holds a reference ('#/$defs/File') that does not name a data shape. Declare that shape, or correct the reference."

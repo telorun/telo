@@ -1,5 +1,5 @@
-//! The supervisor protocol, generation 1: every message, its validation and the
-//! output frame. Normative text: `packages/runner-core/specs/supervisor-protocol.md`.
+//! The supervisor protocol, generation 2: every message, its validation, the
+//! output frame and the port forward's query. Normative text: `packages/runner-core/specs/supervisor-protocol.md`.
 //! No Node twin — the crate runs where no runtime is (see the crate README); the
 //! runner's half is `packages/runner-core/src/supervisor/supervisor-protocol.ts`.
 
@@ -9,8 +9,13 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-pub const GENERATION: u64 = 1;
+pub const GENERATION: u64 = 2;
 pub const PATH: &str = "/v1/supervisor";
+pub const PORT_FORWARD_PATH: &str = "/v1/port-forward";
+
+/// What a port forward holds read from its port and not yet written to the
+/// WebSocket before it stops reading the port.
+pub const MAX_FORWARD_QUEUED_BYTES: usize = 1024 * 1024;
 
 /// The largest `cols` / `rows` a message may carry.
 pub const MAX_DIMENSION: u64 = 10_000;
@@ -29,6 +34,25 @@ pub mod close_code {
     pub const GENERATION_MISMATCH: u16 = 4426;
     /// The runner read too slowly to keep up with the output.
     pub const BACKLOGGED: u16 = 4429;
+    /// A port forward's port: nothing accepts a connection on it.
+    pub const PORT_UNREACHABLE: u16 = 4502;
+}
+
+/// The port a `/v1/port-forward` query names: exactly `port=<n>`, `n` a
+/// decimal from 1 to 65535 with no sign or leading zero.
+pub fn parse_port_forward_query(query: Option<&str>) -> Result<u16, ProtocolError> {
+    let query = query.unwrap_or("");
+    let Some(digits) = query.strip_prefix("port=") else {
+        return Err(ProtocolError::new(format!("a port forward's query is 'port=<n>', got {query:?}")));
+    };
+    let well_formed = !digits.is_empty()
+        && digits.len() <= 5
+        && digits.bytes().all(|byte| byte.is_ascii_digit())
+        && !digits.starts_with('0');
+    match digits.parse::<u32>() {
+        Ok(port) if well_formed && port <= u32::from(u16::MAX) => Ok(port as u16),
+        _ => Err(ProtocolError::new(format!("a port forward's port is a decimal from 1 to 65535, got {digits:?}"))),
+    }
 }
 
 /// The byte channel's stream tags (`packages/runner-core/src/contract.ts`).

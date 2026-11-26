@@ -8,7 +8,8 @@ import { anchorMove } from "./link-address.js";
 import { matchPage } from "./page-route.js";
 import { ErrorNode, Loading, Nodes, type SpecNode } from "./nodes.js";
 import { openedLocation, OpenedPageSurface, useOpenedPage, type SearchedDocument } from "./opened-page.js";
-import { PressQueueContext, PressQueues } from "./operation.js";
+import { MutationRunner, MutationRunnerContext } from "./mutation-call.js";
+import { FormRecords, FormRecordsContext } from "./form-records.js";
 import { fetchDocument, fetchNotFound, type PageDocument } from "./page-documents.js";
 import { LayoutFrame, type LayoutDocument } from "./layout.js";
 import { queryRoot } from "./query-root.js";
@@ -260,8 +261,10 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
   );
   // Another value of a variable is another record: the page is drawn afresh.
   const drawing = `${declared?.path ?? ""}\u0000${paramsKey}`;
-  // Serial presses are ordered within one page.
-  const queues = useMemo(() => new PressQueues(), [path]);
+  // The page's runner: a serial mutation's calls are ordered within one page, and what a success does is the runner's.
+  const runner = useMemo(() => new MutationRunner(), [path]);
+  // The page's forms: the settled record each holds, which a query or listing naming it reads.
+  const forms = useMemo(() => new FormRecords(), [drawing]);
   const layout = layoutId === undefined ? undefined : layouts.get(layoutId);
   const arranged = layoutId === undefined || layout !== undefined;
   const absent = !declared && missing?.path === path ? missing : undefined;
@@ -321,11 +324,13 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
                 )
               ) : (
                 shown ? (
-                  <PressQueueContext.Provider key={drawing} value={queues}>
-                    <RootsContext.Provider value={pageRoots}>
-                      <Nodes nodes={shown.children} />
-                    </RootsContext.Provider>
-                  </PressQueueContext.Provider>
+                  <MutationRunnerContext.Provider key={drawing} value={runner}>
+                    <FormRecordsContext.Provider value={forms}>
+                      <RootsContext.Provider value={pageRoots}>
+                        <Nodes nodes={shown.children} />
+                      </RootsContext.Provider>
+                    </FormRecordsContext.Provider>
+                  </MutationRunnerContext.Provider>
                 ) : (
                   <Loading />
                 )

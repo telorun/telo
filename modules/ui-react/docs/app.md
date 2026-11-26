@@ -386,8 +386,8 @@ but the drawing is the listing's, whatever the layout:
   ascending then descending. A calendar and a timeline draw no control but
   still send the sort. A sort or a filter change returns every read to its
   first page.
-- **Reloading.** A write, a delete, a row action, `notifyChanged(path)` and an
-  action's resolved target and `onSuccess.refreshes` reload every listing whose
+- **Reloading.** A write, a delete, a row action, `notifyChanged(path)` and a
+  mutation's resolved `url` and `invalidates` reload every listing whose
   source has that `basePath` — a templated one as it resolves
   ([invalidation](urls.md#invalidation)) — and every `values: present` filter
   over it. `reloadEvery` reloads the listing on a timer by the same rule, with
@@ -412,7 +412,7 @@ but the drawing is the listing's, whatever the layout:
 - **Moving.** A layout's `move` runs when a record is dragged to another
   board column, calendar day, timeline column or lane, or tree record — or
   moved there through its "Move to" menu (`moveTo`), the keyboard path of every
-  drag. The gesture fills `to` and the move's row action is sent with the
+  drag. The gesture fills `to` and the move's mutation is sent with the
   inputs it binds over `row` and `to`, never a replace through the edit form;
   a 2xx answer reloads every listing over the collection, as a write does,
   and a refusal is drawn beside the record's buttons. A board column and a
@@ -454,7 +454,7 @@ is drawn as an error node in place of its listing
   listing, at the top of a form, as the failure of a filter's present values
   or of an option source. A write announces the change under the resolved
   `basePath` (and an edit or delete also under the record's own path), which
-  is what a query or an action's `refreshes` names.
+  is what a query or a mutation's `invalidates` names.
 - A filter bar shows the filters on one property together: one label, and
   each control captioned by its operator — `from` and `to` for a range
   (`gte`, `lte`), `after` and `before` for `gt` and `lt`.
@@ -546,54 +546,51 @@ is drawn as an error node in place of its listing
 
 A listing's [`rowActions`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) — and a `list`
 node's, drawn the same way in a last cell of each row — are text buttons in
-each row, showing each action's label in the order declared, before edit and
+each row, showing each call's `label` in the order declared, before edit and
 delete. A [`button` node](#buttons) and a markdown node's
-[annotations](markdown.md#annotations) run their bound actions the same way.
+[annotations](markdown.md#annotations) run their calls the same way.
 
 - Written `rowActionsDisplay: menu`, or `auto` where the listing's own width
   does not give the buttons room, they are folded with edit and delete into
-  one `row-menu` button per row opening a `Menu`; an action whose condition
+  one `row-menu` button per row opening a `Menu`; a call whose condition
   does not hold is a disabled entry whose hint is its `disabledText`. `auto`
   is judged once for the listing, in the container the records are drawn in
   and never the viewport, before the page is painted and again whenever that
   container is resized or the records or actions change.
-- A press sends the row's bound record at once — `POST`, as JSON, to the
-  action's path under the mount, as an action's own press does. The record is
-  read when the button is pressed.
-- A row is one entry: until its press is answered — or, for a `serial` action,
-  while it waits behind an earlier press of that action on the page — every
+- A press sends the row's bound record at once — the mutation's `method`, as
+  JSON, to its `url` under the mount, [as every call does](#mutation-calls). The
+  record is read when the button is pressed.
+- A row is one entry: until its press is answered — or, for a `serial` mutation,
+  while it waits behind an earlier call of that mutation on the page — every
   row action and the delete button of that row are disabled, and a press on
   one sends nothing; the pressed button carries `data-state="submitting"`.
   Other rows stay usable, and so do edit, the create button, sorting and
   paging. While a delete is being sent, every row action is disabled.
 - An entry's `enabled` disables its button while its condition does not hold
-  over the row and the roots in scope, with `disabled-text` beside it; the
-  action's own `enabled` plays no part.
+  over the row and the roots in scope, with `disabled-text` beside it.
 - An entry with `confirm` asks first, in the confirmation a delete uses: the
-  question is its title and its button carries the action's label. Cancel or
+  question is its title and its button carries the call's `label`. Cancel or
   Escape sends nothing.
-- An entry with `prompt` opens that confirmation on the press with its fields
-  — the action's fields its inputs do not bind — under the title, each the
-  control a form derives for the property. Its button sends what the fields
-  hold together with the bound record, which is never drawn; Enter in a field
-  does the same. The two make one record, held whole to the input model before
-  anything is sent: a value it refuses marks its field, a property it refuses
-  that no field enters — a required input whose binding read nothing — is
-  named under the fields, and nothing is sent. What was entered is kept until
-  the dialog closes, and the fields the action's `state` keeps are
-  [kept values](#forms) like a form's.
-- Once the operation succeeds the confirmation closes, the action's `result`
-  tree — when it declares one — is drawn in place of the button
-  (`row-answer`), and its `onSuccess` applies. The listing then reloads every
-  listing on the page over the same `basePath`, and draws the record from the
-  action's answer when that answer is the record; the answer stays while that
-  record's key is drawn. In a list it stays as long as the answer the list is
+- An entry with `prompt` opens that confirmation on the press with the prompt's
+  fields under the title, each the control a form derives for the property. Its
+  button reads the entries as `prompt` in the call's `inputs`, so the record
+  sent is the bound inputs, the entered ones among them; Enter in a field does
+  the same. The entries are held to the prompt's `model` before anything is
+  sent: a value it refuses marks its field, and the record built from `inputs`
+  is then held whole to the mutation's input model — one it refuses is named
+  under the fields, and nothing is sent. What was entered is kept until the
+  dialog closes.
+- Once the write succeeds the confirmation closes, the call's `result` tree —
+  when it declares one — is drawn in place of the button (`mutation-result`),
+  and its `onSuccess` effects run. The listing then reloads every listing on
+  the page over the same `basePath`, and draws the record from the answer when
+  that answer is the record; the answer stays while that record's key is drawn. In a list it stays as long as the answer the list is
   drawn from.
 - An operation that fails reloads nothing. With a confirmation open, the
   refusal is shown in it as an `error` node: its button sends the record again,
   and Cancel dismisses it; an entry with `prompt` shows a 400 as a form does
-  instead. Otherwise the action's `failure` tree is drawn beside the button
-  (`row-failure`), and the next press clears it.
+  instead. Otherwise the call's `failure` tree is drawn beside the button
+  (`mutation-failure`), and the next press clears it.
 
 ## Forms
 
@@ -649,69 +646,106 @@ delete. A [`button` node](#buttons) and a markdown node's
   the address replaced and never pushed; values read back are held to the
   interpreted profile and the current fields, and to their option source.
   The stored entry is merged property by property, so an entry keeping fewer
-  properties leaves the others another entry of the key keeps. Every form,
-  action and open prompt mounted in the document under the same key, keeping a
+  properties leaves the others another entry of the key keeps. Every form and
+  open prompt mounted in the document under the same key, keeping a
   property in the same place — the address, or one store — follows a change
   another makes to it, unless it is editing a record; another tab, and a
   prompt opened later, sees it when it next mounts: `author` entered in one
-  action's prompt opens the next prompt of the key holding it.
+  form opens the next form of the key holding it.
 
-## Actions
+## Mutation calls
 
-An [`action` node](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) is a form with one button, and
-below it what the operation answered.
+Every place that runs a [`Ui.Mutation`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) — a row, a
+`button` node, an annotation, a layout's move, a form's `onSubmit` and its
+`autosave` — sends the same request, under one `concurrency`.
 
-- The fields are a form's: the same controls, derived the same way, and the
-  same check in the page before anything is sent. The button shows the
-  action's `label`.
-- A press sends the action's `request`: its `method` to its `target`, resolved
-  over `input` and put under the mount (mounted at `/admin`, a target
-  `/api/reports` is sent to `/admin/api/reports`). `POST`, `PUT` and `PATCH`
-  send `content-type: application/json` and the entered record's properties
-  that hold a value, less the ones the target `consumed`; `{}` when none
-  remain. `DELETE` sends no body and no content type. A target that does not
-  resolve sends nothing and draws the `failure` tree with
-  `ERR_UI_ADDRESS_UNRESOLVED`. A field holding nothing is left out; a checkbox
-  is always `true` or `false`.
-- Every press clears the last answer, and the form takes no other press until
-  the operation answers. A `serial` action's presses on the page — its form's
-  and its rows' — are sent one after another, in the order they were made.
-  The fields keep what was entered, whatever the answer.
-- A success draws the `result` tree (`action-result`) over `result`, the
-  record sent as `input` and what the form holds now as `values`. Its body is
-  read only when that tree, the address of `onSuccess.to` or an
-  `onSuccess.refreshes` entry reads `result`, and must then be a JSON object the declared answer
-  model accepts; any other body, an empty one (a `204`) included, is a failure
+- A press sends the mutation's `method` to its `url`, resolved over `input` and
+  put under the mount (mounted at `/admin`, a url `/api/reports` is sent to
+  `/admin/api/reports`). `POST`, `PUT` and `PATCH` send
+  `content-type: application/json` and the record's properties that hold a
+  value, less the ones the url `consumed`; `{}` when none remain. `DELETE`
+  sends no body and no content type. A url that does not resolve sends nothing
+  and draws the `failure` tree with `ERR_UI_ADDRESS_UNRESOLVED`. The record is
+  judged against the mutation's input model first: one it refuses is not sent.
+- A call takes no other press until it answers. A `serial` mutation's calls on
+  the page — a row's, a button's, a form's `onSubmit` and its `autosave` — are
+  sent one after another, in the order they were made, through one queue the page
+  shell owns per mutation `id`.
+- A success draws the call's `result` tree (`mutation-result`) over `result`, the
+  record sent as `input` and, on a form, what it holds now as `values`. Its body
+  is read only when that tree, an effect or an `invalidates` entry reads
+  `result`, and must then be a JSON object the declared answer model accepts;
+  any other body, an empty one (a `204`) included, is a failure
   `ERR_UI_RESPONSE_INVALID`. A 2xx nothing reads is a success whatever it holds.
-- Anything else draws the `failure` tree (`action-failure`) over `error` —
+- Anything else draws the `failure` tree (`mutation-failure`) over `error` —
   `status`, absent when nothing answered; `code`, the problem body's `code`,
   else `ERR_UI_UNAUTHORIZED` for a 401, `ERR_UI_FORBIDDEN` for a 403 and
   `ERR_UI_REQUEST_FAILED` for anything else; `message`, its `detail`, else the
-  renderer's own text for the status — `input` and `values`. A 400 also marks
-  the fields its `data.issues` name, each worded from its `keyword` and
-  `params` by `ui`'s validation texts, every other issue under the fields.
-- After a success the resolved target path and each resolved
-  `onSuccess.refreshes` path are announced (an entry that does not resolve is
-  skipped and reported in the console), and every query reading exactly one
-  reads again ([invalidation](urls.md#invalidation)). The page then goes to
-  `onSuccess.to`, its address over `result` and `input`: within the
+  renderer's own text for the status — and `input`. A 400 also marks the fields
+  its `data.issues` name, on a form or a prompt, each worded from its `keyword`
+  and `params` by `ui`'s validation texts, every other issue under the fields.
+- **After a success, in this order:** the call's own answer is drawn; the
+  resolved `url` path and each resolved `invalidates` path are announced (an
+  entry that does not resolve is skipped and reported in the console), and every
+  query reading exactly one reads again ([invalidation](urls.md#invalidation));
+  then the call's `onSuccess` effects run in the order written, each after the
+  one before has happened. The page shell runs them from the request's answer,
+  not the component that made the call, so they still happen once the surface
+  that held it has closed. An effect that is a destination goes within the
   application to an address a declared page opens, by a full load to any other
   app-relative address, by replacing the page for an `https://`, `http://` or
-  `mailto:` one; an opened page is followed to its own address. An address
-  that does not resolve goes nowhere.
-- The drawn answer is cleared when a property `clearAnswerOn` lists changes.
+  `mailto:` one; an opened page is followed to its own address. An address that
+  does not resolve goes nowhere.
+
+### Form writes
+
+A form without a `record` runs its writes through the same calls.
+
+- **`onSubmit`.** The submit button, labelled with `onSubmit.label` (the text
+  `save` when none is written), is disabled while its `enabled` condition does
+  not hold, with `disabled-text` beside it. A press judges the record against
+  the mutation's input model — an invalid one sends nothing and marks the
+  fields — then flushes `autosave` and waits for it, and is not sent if that
+  fails. With `confirm` a confirmation asks first. The answer is drawn beneath
+  the fields. After a success the order is: the write's `result`, then
+  `afterSubmit`, then the form's `onSuccess` effects, over `values` and `result`
+  — the mutation's answer, or after a record editor's default write the stored
+  record the collection answered with (held to the collection's model; one it
+  refuses is `ERR_UI_RESPONSE_INVALID` and nothing follows).
+- **`autosave`.** Sent as the values settle — a choice or a commit at once,
+  typed text after the typing pause or `debounce`, the page becoming hidden
+  sending a waiting write — when the record is valid, differs from the newest
+  acknowledged one and is not the one in flight. A change made meanwhile is held,
+  the newest replacing older, and sent when the pending write answers; no write
+  is aborted or reordered, and under a `serial` mutation a waiting write takes
+  every change made while it waits and goes once. The form is `data-state="submitting"`
+  while a write is in flight or held, its answer region carries `aria-busy` and
+  the `saving` part is drawn beside it. A failure draws the `failure` tree and a
+  `retry` button, lasting until the next change or that button; nothing is
+  retried automatically. The pinned rows are `ui`'s `conformance/form-writes.json`.
+- **Findings.** A finding of a write's input model lands on the field a bound
+  input names as exactly `values.<property>`, shown after the form's own, each
+  wording once; any other is drawn in that write's answer region.
+- **Unsaved.** A form with `autosave` is unsaved while its record differs from
+  the acknowledged one or a write is waiting, in flight or failed; leaving asks
+  with `unsaved: confirm`, "keep editing" leaving the write to send, "discard"
+  dropping it.
+- **One record per form and page.** A form placed twice shows and edits one
+  record; the renderer keeps its settled, valid record per form `id` and page,
+  as the `form` root of every [query](urls.md#queries) and
+  listing that names it.
 
 ### Buttons
 
 A [`button` node](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) is a `button` part labelled with its
-action's `label`, drawn as its `button` display says — text, a glyph beside its
+call's `label`, drawn as its `button` display says — text, a glyph beside its
 text, or a glyph alone named by `aria-label` — and styled by its `style`. A
-press runs the action as a [row action](#row-actions) does, with the inputs it
+press runs the call as a [row action](#row-actions) does, with the inputs it
 binds read over the roots in scope when it is pressed: at once, or through its
 `confirm` question and its `prompt`. Until it is answered the button is
-disabled and carries `data-state="submitting"`; a success draws the action's
-`result` tree in its place (`row-answer`) and applies `onSuccess`, and a
-failure draws the `failure` tree beside it (`row-failure`), or in the open
+disabled and carries `data-state="submitting"`; a success draws the call's
+`result` tree in its place (`mutation-result`) and runs `onSuccess`, and a
+failure draws the `failure` tree beside it (`mutation-failure`), or in the open
 confirmation. Its `enabled` disables it while its condition does not hold, with
 `disabled-text` beside it.
 
@@ -847,6 +881,6 @@ The application adds none. The renderer sends the page's same-origin
 credentials with every request; put a guard on the mount or on the API to
 require them. A 401 or 403 is shown as an `error` node where it happened —
 `ERR_UI_UNAUTHORIZED` / `ERR_UI_FORBIDDEN` — for the page when a document was
-refused, for the one listing, form or action when a collection or an operation
+refused, for the one listing, form or call when a collection or an operation
 was. Any other failed request is `ERR_UI_REQUEST_FAILED`, with the HTTP status
-in its message; a form's or an action's 400 is shown on its fields instead.
+in its message; a form's or a prompt's 400 is shown on its fields instead.

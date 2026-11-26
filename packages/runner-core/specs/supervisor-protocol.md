@@ -1,10 +1,12 @@
-# The session supervisor protocol — generation 1
+# The session supervisor protocol — generation 2
 
 **Status: normative.** Every app container a container runner creates runs the session supervisor as its main process, and the runner drives it over the protocol below. The supervisor's implementation is the `telo-runner-supervisor` crate (`packages/runner-core/supervisor/`), the runner's is runner-core's `SupervisorClient`. Both run the vectors in `packages/runner-core/supervisor/vectors/`; a behaviour the vectors pin and this text contradicts is a defect in this text.
 
 A runner and a supervisor agree on the **generation** and nothing else: the supervisor ships inside the runner build that delivers it and has no version of its own. A change to anything below is a new generation.
 
-The supervisor knows nothing about telo. It runs the argv it is handed.
+The supervisor knows nothing about telo. It runs the argv it is handed, and forwards a loopback port it is asked for (§ 8).
+
+A generation-1 supervisor — one an earlier runner build left — has no port forward: it closes a generation-2 `hello` `4426`, and the runner recreates its container.
 
 ## 1. Starting the supervisor
 
@@ -25,9 +27,9 @@ Both variables are removed from the supervisor's environment before anything els
 
 ## 2. The channel
 
-One WebSocket at `GET /v1/supervisor` on the listen address. Any other path is answered `404` without an upgrade.
+One WebSocket at `GET /v1/supervisor` on the listen address, and any number of port forwards at `GET /v1/port-forward` (§ 8). Any other path is answered `404` without an upgrade.
 
-The connection carries `Authorization: Bearer <token>` (the scheme is case-insensitive). It is judged once the upgrade completes:
+Every connection, on either path, carries `Authorization: Bearer <token>` (the scheme is case-insensitive). It is judged once the upgrade completes:
 
 | Credential | Close |
 |---|---|
@@ -35,6 +37,8 @@ The connection carries `Authorization: Bearer <token>` (the scheme is case-insen
 | a token that is not `TELO_SUPERVISOR_TOKEN` | `4403` |
 
 The comparison takes a time that depends on the lengths only.
+
+On `/v1/supervisor` (a port forward carries bytes only, § 8):
 
 - **Text frames** are JSON control messages: one object with a string `type`.
 - **Binary frames** from the runner are stdin bytes (§ 4.5); from the supervisor, output frames (§ 5).
@@ -125,21 +129,33 @@ Every chunk a run writes is one binary frame `[seq:4 BE][stream:1][payload]`, th
 
 ## 7. Shutdown
 
-On SIGTERM or SIGINT the supervisor stops accepting connections and forwards SIGTERM to the live run's group. Once the run has ended — `exited` sent — it closes the connection `1001` and exits `0`. It never escalates to SIGKILL itself: the container engine's own grace does.
+On SIGTERM or SIGINT the supervisor stops accepting connections and forwards SIGTERM to the live run's group. Once the run has ended — `exited` sent — it closes the connection `1001` and exits `0`. It never escalates to SIGKILL itself: the container engine's own grace does. A port forward is not closed first: it ends with the process.
 
-## 8. Close codes
+## 8. Port forwards
+
+`GET /v1/port-forward?port=<n>` relays raw bytes between the WebSocket and one TCP connection the supervisor opens to **`127.0.0.1:<n>`**, so a runner reaches a port a run binds to the container's loopback and nothing else on the network does (kubectl's port-forward, SSH's `-L`). The supervisor dials no other address.
+
+- **Independent of the channel.** A forward says no `hello`, supersedes no connection and is superseded by none; any number may be open beside the one driving the supervisor, and none is affected by a run starting or ending.
+- **The request, in order:** the bearer token as § 2 judges it (`4401` / `4403`); then the query, which is exactly `port=<n>`, `n` a decimal from `1` to `65535` with no sign or leading zero — anything else, another parameter included, closes `4400`; then the dial — a port nothing accepts a connection on closes `4502`. Nothing the runner sends is read until the dial has succeeded.
+- **Bytes:** each binary frame from the runner is written to the port in order; what the port sends arrives as binary frames, in order, chunked as the supervisor reads it. A text frame from the runner closes `4400`.
+- **Backpressure:** while more than **1 MiB** read from the port is not yet written to the WebSocket's connection, the supervisor reads nothing more from the port. A forward is never closed for a slow runner: the port's own sender waits instead.
+- **Ending:** the port ending its connection closes the forward `1000`, behind every byte it sent; the connection failing closes `4502`. The runner closing or dropping the forward ends the port's connection. A WebSocket has no half-close, so either side ending ends both directions.
+
+## 9. Close codes
 
 | Code | Sent by | Meaning |
 |---|---|---|
+| `1000` | supervisor | A port forward's port ended its connection. |
 | `1001` | supervisor | It is shutting down. |
-| `4400` | either | A malformed message, or one out of order. |
+| `4400` | either | A malformed message, or one out of order; a port forward's malformed query or a text frame on it. |
 | `4401` | supervisor | No bearer token. |
 | `4403` | supervisor | The wrong token. |
 | `4408` | supervisor | No `hello` within 10 s. |
 | `4409` | supervisor | Another connection took over. |
 | `4426` | either | A `hello` of another generation. The runner recreates the pod. |
 | `4429` | supervisor | The runner fell more than 4 MiB behind. |
+| `4502` | supervisor | A port forward's port: nothing accepts a connection on it, or its connection failed. |
 
-## 9. Vectors
+## 10. Vectors
 
-`packages/runner-core/supervisor/vectors/` pins this generation; the crate README describes the format. `messages.json` and `output-frames.json` are run by both implementations' codecs, `exchanges.json` against the built executable by the crate's tests and by runner-core's.
+`packages/runner-core/supervisor/vectors/` pins this generation; the crate README describes the format. `messages.json` (its `portForward` section the forward's query) and `output-frames.json` are run by both implementations' codecs, `exchanges.json` against the built executable by the crate's tests and by runner-core's, and every exchange that starts no program also against runner-core's `FakeSupervisor`.

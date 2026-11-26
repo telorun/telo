@@ -4,6 +4,7 @@ import {
   drawerGroups,
   groupTotal,
   isEmpty,
+  kindAsWritten,
   kindPlaneIsSoleContent,
 } from "./drawer-groups";
 import { offCanvasNodes } from "./off-canvas";
@@ -60,8 +61,23 @@ describe("what the drawer files where", () => {
     const groups = groupsOf(workspace());
     expect(groups.providers.map((n) => n.id)).toEqual(["chatDb"]);
     expect(groups.types.map((n) => n.id)).toEqual(["Rows"]);
-    expect(groups.kinds.map((k) => k.id)).toEqual(["sql.Connection", "run.Sequence"]);
-    expect(groups.resources.map((n) => n.id)).toEqual(["registryTools", "writeLine"]);
+    expect(groups.kinds).toEqual([]);
+    expect(groups.imports.map((g) => g.alias)).toEqual(["ai-mcp", "console", "run", "sql"]);
+    expect(groups.imports.flatMap((g) => g.kinds.map((k) => k.id))).toEqual([
+      "run.Sequence",
+      "sql.Connection",
+    ]);
+  });
+
+  it("files imported instances under the alias the module is imported as", () => {
+    const graph = graphOf([
+      node("writeLine", { external: true, module: "Console", alias: "Term", capability: "Telo.Invocable" }),
+    ], [{ ...kind("Console.WriteLine", false), module: "Console" } as GraphKind]);
+    const groups = groupsOf(graph);
+    expect(groups.imports).toHaveLength(1);
+    expect(groups.imports[0].alias).toBe("Term");
+    expect(groups.imports[0].resources.map((n) => n.id)).toEqual(["writeLine"]);
+    expect(groups.imports[0].kinds.map((k) => k.id)).toEqual(["Console.WriteLine"]);
   });
 
   it("files an imported instance under what it borrows from, whatever its capability", () => {
@@ -69,13 +85,13 @@ describe("what the drawer files where", () => {
     // on whether something happens to call it, and where it was DECLARED is the
     // more specific reason it is not a box.
     const groups = groupsOf(workspace());
-    expect(groups.resources.map((n) => n.id)).toContain("registryTools");
+    expect(groups.imports.flatMap((g) => g.resources.map((n) => n.id))).toContain("registryTools");
     expect(groups.providers.map((n) => n.id)).not.toContain("registryTools");
   });
 
   it("leaves this module's own boxes and own kinds off it", () => {
     const groups = groupsOf(workspace());
-    expect(groups.resources.map((n) => n.id)).not.toContain("chatLoop");
+    expect(groups.imports.flatMap((g) => g.resources.map((n) => n.id))).not.toContain("chatLoop");
     expect(groups.kinds.map((k) => k.id)).not.toContain("app.Own");
   });
 
@@ -97,7 +113,7 @@ describe("what the drawer files where", () => {
         owner: "owner",
       }),
     ]);
-    expect(groupsOf(graph).resources.map((n) => n.id)).toEqual(["owner"]);
+    expect(groupsOf(graph).imports.flatMap((g) => g.resources.map((n) => n.id))).toEqual(["owner"]);
   });
 
   it("draws no chrome for a module with nothing to file", () => {
@@ -105,6 +121,25 @@ describe("what the drawer files where", () => {
     const groups = groupsOf(graph);
     expect(isEmpty(groups)).toBe(true);
     expect(groupTotal(groups)).toBe(0);
+  });
+});
+
+describe("kindAsWritten", () => {
+  const graph = graphOf([]);
+
+  it("writes a library's own `Self.` spelling through the import alias", () => {
+    const n = node("writeLine", {
+      kind: "Self.WriteLine",
+      canonicalKind: "Console.WriteLine",
+      external: true,
+      module: "Console",
+      alias: "Term",
+    });
+    expect(kindAsWritten(graph, n)).toBe("Term.WriteLine");
+  });
+
+  it("leaves this module's own spelling alone", () => {
+    expect(kindAsWritten(graph, node("a", { kind: "Console.WriteLine" }))).toBe("Console.WriteLine");
   });
 });
 

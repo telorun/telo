@@ -1,4 +1,5 @@
 import { DiagnosticSeverity } from "@telorun/analyzer";
+import { Trash2 } from "lucide-react";
 import { summarizeResource, type DiagnosticsSummary } from "../../../diagnostics-aggregate";
 import { DiagnosticBadge } from "../../diagnostics/DiagnosticBadge";
 import { useActiveFilePaths, useDiagnosticsState } from "../../diagnostics/DiagnosticsContext";
@@ -13,6 +14,8 @@ export function ResourceTable({
   selectedResource,
   onSelectResource,
   onNavigateResource,
+  onDeleteResource,
+  readOnly,
   query,
 }: ViewProps & { query: string }) {
   const diagState = useDiagnosticsState();
@@ -41,7 +44,7 @@ export function ResourceTable({
       emptyText="No resources — create one from the graph"
     >
       <table className="w-full text-left text-sm">
-        <OutlineHead columns={[null, "Name", "Kind", "Capability"]} />
+        <OutlineHead columns={[null, "Name", "Kind", "Capability", null]} />
         <tbody>
           {resources.map((r) => {
             const kind = viewData.kinds.get(r.kind);
@@ -49,7 +52,7 @@ export function ResourceTable({
             return (
               <tr
                 key={`${r.kind}/${r.name}`}
-                className={`cursor-pointer border-b border-zinc-100 dark:border-zinc-800/50 ${rowClassName(r.kind, r.name, summary)}`}
+                className={`group cursor-pointer border-b border-zinc-100 dark:border-zinc-800/50 ${rowClassName(r.kind, r.name, summary)}`}
                 onClick={() => onSelectResource(r.kind, r.name)}
               >
                 <td className="w-5 py-1.5 text-center">
@@ -79,6 +82,21 @@ export function ResourceTable({
                 </td>
                 <td className="py-1.5">
                   {kind?.capability && <CapabilityBadge capability={kind.capability} />}
+                </td>
+                <td className="w-8 py-1.5 pr-2 text-right">
+                  {!readOnly && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteResource(r.kind, r.name);
+                      }}
+                      title="Delete this resource"
+                      aria-label={`Delete ${r.name}`}
+                      className="invisible rounded p-0.5 text-zinc-400 group-hover:visible touch:visible hover:bg-zinc-200 hover:text-red-600 dark:hover:bg-zinc-700"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  )}
                 </td>
               </tr>
             );

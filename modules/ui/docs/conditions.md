@@ -83,11 +83,13 @@ in.
 | Root | Where |
 | --- | --- |
 | `data` | inside a [`query` node](nodes.md#the-query-node)'s `children`, typed from the query's `model` |
-| `error` | inside a query node's or a [`Ui.Action`](action.md#the-answer)'s `failure`: a `Ui.RequestError` |
-| `result` | inside an action's `result`, and its `onSuccess` (`to`, `refreshes`): the answer, typed from `outputModel` |
-| `input` | inside an action's `request.target`, `result`, `failure` and `onSuccess`: the record sent, typed from `inputModel` |
+| `error` | inside a query node's or a [call's](mutation.md#the-answer) `failure`: a `Ui.RequestError` |
+| `result` | inside a call's `result` and `onSuccess`, a form's `onSubmit` / `autosave` `result` and its `onSuccess`, and a mutation's `invalidates`: the answer, typed from `outputModel` |
+| `input` | inside a mutation's `url` and `invalidates` and a call's `result`, `failure` and `onSuccess`: the record sent, typed from `inputModel` |
+| `prompt` | at a call's `inputs`, where the call has a `prompt`: what was entered, typed from the prompt's `model` |
+| `form` | in the `url` and `input.body` of a query that names a form, the trees of the nodes drawing it, and the `filters` and row actions of a listing that names one: the form's settled, valid record, typed from its `model` |
 | `query` | wherever the resource or the page declares `query:` (a page, a query, a listing's row actions); with none declared it is closed and empty |
-| `values` | a form's or an action's field `shown`, an action's `enabled`, its `result` and `failure`, typed from the model |
+| `values` | a form's field `shown`, its `onSubmit.enabled`, `inputs`, `result` and `failure` and its `autosave`'s, and its `onSuccess`, typed from the model |
 | `row` | a `list` node's column and row actions, a listing's row actions and layouts; typed as an element of what the list's `rows` names, or from the listing's model |
 
 Every root is read only by what is named — a condition's `at`, a `value` or
@@ -115,11 +117,10 @@ once counts as missing, and a value its declaration refuses is missing.
 
 `Ui.Enablement` is a condition plus the reason shown while it does not hold:
 `{ at, matches, disabledText }`, all three required. On a
-[`Ui.Action`](action.md) it decides whether the button can be pressed, over the
-form's `values`; on a [bound action](action.md#bound-actions), whether its
-button can be — a row's or a `button` node's — over the roots in
-scope, `row` among them where there is one; the action's own `enabled` never
-governs it.
+a form's `onSubmit` it decides whether the submit button can be pressed, over
+the form's `values`; on a [call](mutation.md#calls), whether its button can be —
+a row's or a `button` node's — over the roots in scope, `row` among them where
+there is one.
 
 ```yaml
 enabled:

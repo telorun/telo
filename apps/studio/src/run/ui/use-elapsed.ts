@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 
 /** Wall-clock age of a live run, ticking once a second. Null when nothing is
  *  live — a finished run is described by its status and start time, and a
- *  duration for it would need an end timestamp the record does not carry. */
-export function useElapsed(startedAt: number | null): string | null {
-  const live = startedAt !== null;
+ *  duration for it needs an end, which only a program ended under watch gives. */
+export function useElapsed(startedAt: number | null, endedAt?: number | null): string | null {
+  const live = startedAt !== null && endedAt == null;
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -15,6 +15,7 @@ export function useElapsed(startedAt: number | null): string | null {
   }, [live, startedAt]);
 
   if (startedAt === null) return null;
+  if (endedAt != null) return formatDuration(Math.max(0, endedAt - startedAt));
   return formatDuration(Math.max(0, now - startedAt));
 }
 

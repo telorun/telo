@@ -1,0 +1,19 @@
+# A `DELETE` sends no body, yet its url reads `id` and leaves `note` out.
+kind: Telo.Library
+metadata:
+  name: UiInvalidMutationInputUnsent
+  version: 1.0.0
+  description: Test fixture exporting a DELETE mutation whose url leaves an input property unread.
+imports: { Ui: ../../../../../ }
+exports: { resources: [deleteNote] }
+---
+kind: Ui.Mutation
+metadata: { name: deleteNote }
+inputModel:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [id]
+    properties: { id: { type: string }, note: { type: string } }
+method: DELETE
+url: { path: "/api/notes/{id}", pathParams: { id: !cel "input.id" } }

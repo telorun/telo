@@ -248,15 +248,6 @@ kind: Telo.JsonSchema
 metadata: { name: Closed }
 schema: { type: object, required: [closed], properties: { closed: { type: boolean } } }
 ---
-kind: Ui.Action
-metadata: { name: closeTicketAction }
-inputModel: !ref TicketId
-outputModel: !ref Closed
-request: { target: { path: "/api/tickets/{id}/close", pathParams: { id: !cel "input.id" } } }
-label: Close
-result: { type: badge, style: success, text: Closed }
-onSuccess: { refreshes: [/api/tickets/inbox] }
----
 kind: Ui.Page
 metadata: { name: inboxPage }
 path: /
@@ -282,9 +273,16 @@ children:
           - header: Status
             value: !cel "row.status"
         rowActions:
-          - action: !ref closeTicketAction
+          - mutation:
+              kind: Ui.Mutation
+              inputModel: !ref TicketId
+              outputModel: !ref Closed
+              url: { path: "/api/tickets/{id}/close", pathParams: { id: !cel "input.id" } }
+              invalidates: [/api/tickets/inbox]
             inputs:
               id: !cel "row.id"
+            label: Close
+            result: { type: badge, style: success, text: Closed }
             confirm: Close this ticket?
             enabled:
               at: !cel "row.status"

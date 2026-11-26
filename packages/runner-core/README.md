@@ -42,8 +42,9 @@ signals and reports:
   env: **session env reaches an app only through `runApp`**, never a workload's
   definition.
 - `BackendWorkload`: `workspace`, `addresses(app)` (the `--inspect` listen
-  address core passes, the debug stream URL core relays from, the host core
-  dials for reachability), `runApp(app, { runId, argv, env, cwd, io, cols?, rows? })`,
+  address core passes — loopback inside the workload — with `connect(signal)`,
+  the opener of a byte stream to it that core speaks the debug stream's HTTP
+  over, and the host core dials for reachability), `runApp(app, { runId, argv, env, cwd, io, cols?, rows? })`,
   `stopApp(app, runId, graceMs)`, `writeStdin` / `resize` keyed to the live run,
   `reload`, `applyDeclaredPorts?`, `setApps`, `setAgent`, `suspend` (delete the
   workload, keep the storage) and `detach` (the runner is exiting).
@@ -65,11 +66,14 @@ as its main process: a static Linux executable from this package's own crate
 (`supervisor/`, not shipped on npm), which runs one process at a time as a
 runner asks over one WebSocket and keeps its output in a ring, so a dropped
 connection stops nothing. The protocol is normative in
-[`specs/supervisor-protocol.md`](specs/supervisor-protocol.md) (generation 1),
+[`specs/supervisor-protocol.md`](specs/supervisor-protocol.md) (generation 2),
 pinned by the vectors in `supervisor/vectors/` that the crate and this
 package's tests both run. A container backend drives it through
 `SupervisorClient`: `connect()`, `run(run)`, `stop(runId, graceMs)`,
-`writeStdin(runId, bytes)`, `resize(runId, cols, rows)` and `close()`, with
+`writeStdin(runId, bytes)`, `resize(runId, cols, rows)`, `openPortForward(port)`
+(a byte stream to `127.0.0.1:<port>` inside the container, which is how a
+container backend reaches a run's loopback-bound inspect endpoint) and
+`close()`, with
 started / exited / failed / refused and seq-numbered output reported to its
 `SupervisorListener`, reconnection replayed from the last seq it holds, and a
 generation mismatch, a refused token, a superseded connection and a restarted

@@ -10,12 +10,12 @@ judges each one where it is written.
 | Where | Typed |
 | --- | --- |
 | a node's `text`, `badge`, link `text`, `alt`, a value's `text`, a list's `heading`, a column's `header` | `Ui.BoundText` |
-| an enablement's `disabledText`, a row action's `confirm` | `Ui.BoundText`, not empty |
-| an action's `label`, a table layout column's `header`, a group's `label` and `description`, a preset's `label` | `Text`, formatted with no values |
+| an enablement's `disabledText`, a call's `confirm` | `Ui.BoundText`, not empty |
+| a call's `label`, a form's `onSubmit.label`, a table layout column's `header`, a group's `label` and `description`, a preset's `label` | `Text`, formatted with no values |
 | a model's `title`, `description` and the `title` of an enumeration's `const` branch | the schema's own texts |
 
 A `Text` formatted with no values may not name a placeholder: `Hello {$name}` as
-an action's label is refused by `telo check`.
+a call's label is refused by `telo check`.
 
 ## A text over data
 
@@ -112,6 +112,8 @@ receive the messages of every served language.
 | `noRows` | No rows. |
 | `nothingFound` | Nothing found. |
 | `save` | Save |
+| `saving` | Saving… |
+| `retry` | Try again |
 | `cancel` | Cancel |
 | `close` | Close |
 | `newRecord` | New |
@@ -278,6 +280,11 @@ receive the messages of every served language.
 | `splitHide` | Hide {$label} |
 | `rowActionsMenu` | Actions |
 
+`saving` is drawn beside a form's answer while an [`autosave`](form.md#autosave)
+write is awaited, and `retry` names the button that sends a failed autosave
+write again. Override them like any key, for one draft editor or the whole
+application.
+
 The keys from `invalid` to the end are the validation texts: what the
 browser's own validation says of a keyword, and what a renderer says of each
 issue of a 400 problem (`data.issues`, `{ pointer, keyword, params }`), so a
@@ -298,7 +305,7 @@ that set's message for the key in the request's language. A model's title, descr
 of language `und`: they are matched against a catalog by their words.
 
 - Every `value` node, `list` column, table layout column, filter field and form or
-  action field carries `labels: [{ value, label }]` — the label of each value an
+  prompt field carries `labels: [{ value, label }]` — the label of each value an
   enumeration offers, `[]` when none — so a value is shown by its label while
   the value sent back is unchanged.
 - Every field carries `description`: the property's description as a record,

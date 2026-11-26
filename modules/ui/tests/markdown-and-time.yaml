@@ -73,13 +73,8 @@ children:
               line: !cel "row.line"
               count: !cel "row.count"
               action:
-                inputs:
-                  id: !cel "params.id"
-                  revision: !cel "data.plan.latestRevision.seq"
-                  item: !cel "row.id"
-                prompt: true
-                action:
-                  kind: Ui.Action
+                mutation:
+                  kind: Ui.Mutation
                   inputModel:
                     kind: Telo.JsonSchema
                     schema:
@@ -91,12 +86,27 @@ children:
                         item: { type: string }
                         author: { type: string, title: Your name }
                         body: { type: string, title: Comment }
-                  request:
-                    target:
-                      path: /api/plans/{id}/comments
-                      pathParams:
-                        id: !cel "input.id"
-                  label: Comment
+                  url:
+                    path: /api/plans/{id}/comments
+                    pathParams:
+                      id: !cel "input.id"
+                inputs:
+                  id: !cel "params.id"
+                  revision: !cel "data.plan.latestRevision.seq"
+                  item: !cel "row.id"
+                  author: !cel "prompt.author"
+                  body: !cel "prompt.body"
+                label: Comment
+                prompt:
+                  kind: Ui.Prompt
+                  model:
+                    kind: Telo.JsonSchema
+                    schema:
+                      type: object
+                      required: [author, body]
+                      properties:
+                        author: { type: string, title: Your name }
+                        body: { type: string, title: Comment }
           - type: list
             rows: !cel "data.events"
             columns:
@@ -132,7 +142,7 @@ steps:
           'count': m.annotations.count,
           'inputs': m.annotations.action.inputs,
           'prompted': m.annotations.action.prompt.fields.map(f, f.property),
-          'action': [m.annotations.action.action.type, m.annotations.action.action.label.text]
+          'label': m.annotations.action.label.text
         })
       expected:
         members: [annotations, fill, type, value]
@@ -144,8 +154,10 @@ steps:
           id: { root: params, path: [id] }
           revision: { root: data, path: [plan, latestRevision, seq] }
           item: { root: row, path: [id] }
+          author: { root: prompt, path: [author] }
+          body: { root: prompt, path: [body] }
         prompted: [author, body]
-        action: [action, Comment]
+        label: Comment
   - name: columnsAre
     invoke: { kind: Assert.Equals }
     inputs:

@@ -151,19 +151,27 @@ export {
   type SupervisorTermination,
 } from "./supervisor/supervisor-client.js";
 export {
+  PORT_FORWARD_MAX_QUEUED_BYTES,
   SUPERVISOR_CLOSE,
   SUPERVISOR_GENERATION,
   SUPERVISOR_PATH,
+  SUPERVISOR_PORT_FORWARD_PATH,
   SupervisorGenerationMismatch,
   SupervisorProtocolError,
   decodeOutputFrame,
   decodeSupervisorMessage,
   encodeRunnerMessage,
+  portForwardTarget,
   type OutputFrame,
   type RunnerMessage,
   type SupervisorHello,
   type SupervisorMessage,
 } from "./supervisor/supervisor-protocol.js";
+export {
+  PortForwardClosed,
+  openPortForward,
+  type PortForwardOptions,
+} from "./supervisor/port-forward-stream.js";
 export {
   SupervisedApp,
   isGenerationMismatch,
@@ -187,6 +195,7 @@ export { probeRoute, type ProbeRouteDeps } from "./routes/probe.js";
 export { sessionsRoute, type ConfigGate, type SessionsRouteDeps } from "./routes/sessions.js";
 export { ioRoute, type IoRouteDeps } from "./routes/io.js";
 export { relayDebugStream, type DebugRelayOptions } from "./debug/relay.js";
+export { openInspectSocket } from "./debug/inspect-socket.js";
 export {
   watchReachability,
   type WatchReachabilityOptions,

@@ -68,6 +68,8 @@ export interface TopologyViewProps {
     buildFields: (newName: string) => Record<string, unknown>,
   ) => void;
   onDeleteResource?: (kind: string, name: string) => void;
+  /** Node ids of resources just deleted, not to be drawn while the model catches up. */
+  justDeleted?: ReadonlySet<string>;
   onWriteRef?: (writes: RefWrite[]) => void;
   /** Reorders one item of a sequence field on a resource. Optional for the same
    *  reason `onWriteRef` is: it is an operation only some views can perform, not

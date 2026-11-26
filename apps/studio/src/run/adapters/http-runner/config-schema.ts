@@ -1,4 +1,5 @@
 import type { JSONSchema7 } from "json-schema";
+import { DEFAULT_RUNNER } from "./default-runner";
 
 /**
  * The unified HTTP-runner config. `baseUrl` is the one client-owned field (you
@@ -11,15 +12,9 @@ export interface HttpRunnerConfig {
   [key: string]: unknown;
 }
 
-const RUNNER_URL_FROM_ENV = (import.meta.env as Record<string, string | undefined>)
-  .VITE_TELO_RUNNER_URL;
-
-/** Default runner: the hosted Telo Cloud runner. Overridable via env for local
- *  development against a docker-runner / k8s-runner. */
-export const DEFAULT_RUNNER_URL =
-  RUNNER_URL_FROM_ENV && RUNNER_URL_FROM_ENV.trim() !== ""
-    ? RUNNER_URL_FROM_ENV
-    : "https://runner.telo.run";
+/** Default runner: the hosted Telo Cloud runner, or the build's override for
+ *  local development against a docker-runner / k8s-runner. */
+export const DEFAULT_RUNNER_URL = DEFAULT_RUNNER.baseUrl;
 
 export const httpRunnerDefaultConfig: HttpRunnerConfig = {
   baseUrl: DEFAULT_RUNNER_URL,

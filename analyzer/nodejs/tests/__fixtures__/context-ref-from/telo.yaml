@@ -1,0 +1,80 @@
+kind: Telo.Application
+metadata: { name: RefFromApp }
+imports: { RefKinds: ./kinds }
+---
+kind: Telo.JsonSchema
+metadata: { name: Draft }
+schema: { type: object, properties: { id: { type: string }, title: { type: string } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Person }
+schema: { type: object, properties: { id: { type: integer }, name: { type: string } } }
+---
+kind: RefKinds.Sheet
+metadata: { name: drafts }
+model: !ref Draft
+---
+kind: RefKinds.Lookup
+metadata: { name: withSheet }
+sheet: !ref drafts
+url: !cel "sheet.title"
+---
+kind: RefKinds.Lookup
+metadata: { name: misspelt }
+sheet: !ref drafts
+url: !cel "sheet.titel"
+---
+# Refused guarded or not: the lookup names no sheet.
+kind: RefKinds.Lookup
+metadata: { name: noSheet }
+url: !cel "sheet != null ? 'a' : 'b'"
+---
+kind: RefKinds.Write
+metadata: { name: saveDraft }
+answer: !ref Draft
+---
+kind: RefKinds.Write
+metadata: { name: saveBare }
+---
+kind: RefKinds.Table
+metadata: { name: people }
+model: !ref Person
+sample: { type: object, properties: { name: { type: string } } }
+---
+kind: RefKinds.Feed
+metadata: { name: peopleFeed }
+table: !ref people
+---
+kind: RefKinds.View
+metadata: { name: peopleView }
+feed: !ref peopleFeed
+---
+# Typed from the first alternative.
+kind: RefKinds.Editor
+metadata: { name: typedFirst }
+a: { write: !ref saveDraft }
+effects: [!cel "result.title", !cel "result.titel"]
+---
+# The write declares no answer: closed and empty.
+kind: RefKinds.Editor
+metadata: { name: closedEmpty }
+a: { write: !ref saveBare }
+effects: [!cel "result.id"]
+---
+# The first alternative's prefix is absent: typed from the second.
+kind: RefKinds.Editor
+metadata: { name: typedSecond }
+b: { view: !ref peopleView }
+effects: [!cel "result.name", !cel "result.nmae"]
+---
+kind: RefKinds.Write
+metadata: { name: saveInline }
+answer: { kind: Telo.JsonSchema, schema: { type: object, properties: { title: { type: string } } } }
+sample: { type: object, properties: { title: { type: string } } }
+---
+# Both alternatives name something: the first wins, for go-to-declaration too.
+kind: RefKinds.Editor
+metadata: { name: bothNamed }
+a: { write: !ref saveInline }
+b: { view: !ref peopleView }
+effects: [!cel "result.title", !cel "sample.title"]

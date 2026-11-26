@@ -36,6 +36,8 @@ export class ModuleExistsError extends Error {
 export interface MaterializeModuleOptions {
   kind: ModuleKind;
   name: string;
+  /** Written as `metadata.title` — the name as the author typed it. */
+  title?: string;
   selection: NewModuleSelection;
   manifestSources: ManifestSource[];
   overwrite?: boolean;
@@ -84,19 +86,21 @@ export async function materializeModule(
 }
 
 /** Builds the file set to write — the blank skeleton, or a starter's full
- *  fetched cascade with its `metadata.name` rewritten to `name`. */
+ *  fetched cascade with its `metadata.name` rewritten to `name` (and
+ *  `metadata.title` set when one is given). */
 async function buildModuleFiles(
   name: string,
   options: MaterializeModuleOptions,
 ): Promise<StarterFile[]> {
   if (options.selection.type === "blank") {
-    const doc = buildInitialModuleDocument(options.kind, name);
+    const doc = buildInitialModuleDocument(options.kind, name, options.title);
     return [{ relPath: DEFAULT_MANIFEST_FILENAME, text: serializeModuleDocument([doc]), isRoot: true }];
   }
   return fetchStarterFiles(
     starterManifestUrl(options.selection.baseUrl, options.selection.starter),
     name,
     options.manifestSources,
+    options.title,
   );
 }
 

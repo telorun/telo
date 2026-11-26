@@ -1,0 +1,320 @@
+{
+  "description": "When a form's entered values settle, what its `form` root holds, and when its `autosave` sends a write: the settle rule, the settled valid record, and the send, hold, coalesce and baseline rules. Each row is a sequence of steps; a step names what happened and what is expected right after it.",
+  "rows": [
+    {
+      "name": "a choice settles at once",
+      "kind": "settle",
+      "pause": 300,
+      "steps": [{ "change": "choice", "settled": 1 }]
+    },
+    {
+      "name": "typed text settles once typing pauses",
+      "kind": "settle",
+      "pause": 300,
+      "steps": [
+        { "change": "typed", "settled": 0 },
+        { "elapse": 299, "settled": 0 },
+        { "elapse": 1, "settled": 1 }
+      ]
+    },
+    {
+      "name": "each typed change starts the pause again",
+      "kind": "settle",
+      "pause": 300,
+      "steps": [
+        { "change": "typed", "settled": 0 },
+        { "elapse": 200, "settled": 0 },
+        { "change": "typed", "settled": 0 },
+        { "elapse": 200, "settled": 0 },
+        { "elapse": 100, "settled": 1 }
+      ]
+    },
+    {
+      "name": "a commit settles typed text at once, and the pause it ended settles nothing more",
+      "kind": "settle",
+      "pause": 300,
+      "steps": [
+        { "change": "typed", "settled": 0 },
+        { "commit": true, "settled": 1 },
+        { "elapse": 300, "settled": 1 }
+      ]
+    },
+    {
+      "name": "a choice made while typed text waits settles both at once",
+      "kind": "settle",
+      "pause": 300,
+      "steps": [
+        { "change": "typed", "settled": 0 },
+        { "change": "choice", "settled": 1 },
+        { "elapse": 300, "settled": 1 }
+      ]
+    },
+    {
+      "name": "a form holds nothing until its record is first valid",
+      "kind": "form",
+      "schema": { "type": "object", "required": ["team"], "properties": { "team": { "enum": ["north", "south"] } } },
+      "steps": [
+        { "settle": {}, "holds": null },
+        { "settle": { "team": "east" }, "holds": null },
+        { "settle": { "team": "north" }, "holds": { "team": "north" } }
+      ]
+    },
+    {
+      "name": "an invalid record keeps the last valid one",
+      "kind": "form",
+      "schema": { "type": "object", "required": ["team"], "properties": { "team": { "enum": ["north", "south"] } } },
+      "steps": [
+        { "settle": { "team": "north" }, "holds": { "team": "north" } },
+        { "settle": { "team": "east" }, "holds": { "team": "north" } },
+        { "settle": { "team": "south" }, "holds": { "team": "south" } }
+      ]
+    },
+    {
+      "name": "a format the model declares is held too",
+      "kind": "form",
+      "schema": { "type": "object", "required": ["from"], "properties": { "from": { "type": "string", "format": "date" } } },
+      "steps": [
+        { "settle": { "from": "2026-02-30" }, "holds": null },
+        { "settle": { "from": "2026-02-28" }, "holds": { "from": "2026-02-28" } }
+      ]
+    },
+    {
+      "name": "a form that starts again holds nothing until it is valid again",
+      "kind": "form",
+      "schema": { "type": "object", "required": ["title"], "properties": { "title": { "type": "string", "minLength": 1 } } },
+      "steps": [
+        { "start": "/api/posts/1", "holds": null },
+        { "settle": { "title": "First" }, "holds": { "title": "First" } },
+        { "start": "/api/posts/1", "holds": { "title": "First" } },
+        { "start": "/api/posts/2", "holds": null },
+        { "settle": { "title": "" }, "holds": null },
+        { "settle": { "title": "Second" }, "holds": { "title": "Second" } }
+      ]
+    },
+    {
+      "name": "a form taken off the page holds nothing",
+      "kind": "form",
+      "schema": { "type": "object", "properties": { "team": { "enum": ["north", "south"] } } },
+      "steps": [
+        { "settle": { "team": "north" }, "holds": { "team": "north" } },
+        { "unplace": true, "holds": null, "placed": false }
+      ]
+    },
+    {
+      "name": "nothing is sent at start",
+      "kind": "autosave",
+      "schema": { "type": "object", "required": ["id"], "properties": { "id": { "type": "string" }, "title": { "type": "string" } } },
+      "start": { "id": "1", "title": "First" },
+      "debounce": 1000,
+      "steps": [{ "elapse": 2000, "state": "idle", "unsaved": false }]
+    },
+    {
+      "name": "typed text is sent once typing rests for the debounce",
+      "kind": "autosave",
+      "schema": { "type": "object", "required": ["id"], "properties": { "id": { "type": "string" }, "title": { "type": "string" } } },
+      "start": { "id": "1", "title": "First" },
+      "debounce": 1000,
+      "steps": [
+        { "change": { "id": "1", "title": "Firs" }, "how": "typed", "unsaved": true },
+        { "elapse": 999 },
+        { "change": { "id": "1", "title": "Fir" }, "how": "typed" },
+        { "elapse": 999 },
+        { "elapse": 1, "sent": [{ "id": "1", "title": "Fir" }], "state": "submitting" },
+        { "answer": "acknowledged", "state": "idle", "unsaved": false }
+      ]
+    },
+    {
+      "name": "a choice is sent at once, and a commit sends what waits",
+      "kind": "autosave",
+      "schema": { "type": "object", "properties": { "title": { "type": "string" }, "pinned": { "type": "boolean" } } },
+      "start": { "title": "First", "pinned": false },
+      "debounce": 1000,
+      "steps": [
+        { "change": { "title": "First", "pinned": true }, "how": "choice", "sent": [{ "title": "First", "pinned": true }] },
+        { "answer": "acknowledged" },
+        { "change": { "title": "Second", "pinned": true }, "how": "typed" },
+        { "commit": true, "sent": [{ "title": "Second", "pinned": true }] },
+        { "answer": "acknowledged", "unsaved": false }
+      ]
+    },
+    {
+      "name": "the page becoming hidden sends what waits",
+      "kind": "autosave",
+      "schema": { "type": "object", "properties": { "title": { "type": "string" } } },
+      "start": { "title": "First" },
+      "debounce": 1000,
+      "steps": [
+        { "change": { "title": "Second" }, "how": "typed" },
+        { "hide": true, "sent": [{ "title": "Second" }] },
+        { "elapse": 1000 }
+      ]
+    },
+    {
+      "name": "a record the input model refuses is not sent, and its valid successor is",
+      "kind": "autosave",
+      "schema": { "type": "object", "required": ["title"], "properties": { "title": { "type": "string", "minLength": 1 } } },
+      "start": { "title": "First" },
+      "debounce": 0,
+      "steps": [
+        { "change": { "title": "" }, "how": "choice", "state": "idle", "unsaved": true },
+        { "elapse": 100 },
+        { "change": {}, "how": "choice" },
+        { "change": { "title": "Second" }, "how": "choice", "sent": [{ "title": "Second" }] }
+      ]
+    },
+    {
+      "name": "a record equal to the baseline is not sent, and one changed back before its debounce sends nothing",
+      "kind": "autosave",
+      "schema": { "type": "object", "properties": { "title": { "type": "string" } } },
+      "start": { "title": "First" },
+      "debounce": 1000,
+      "steps": [
+        { "change": { "title": "First!" }, "how": "typed", "unsaved": true },
+        { "change": { "title": "First" }, "how": "typed", "unsaved": false },
+        { "elapse": 1000, "state": "idle" }
+      ]
+    },
+    {
+      "name": "two changes made while a write is in flight become one write of the newest, sent when it answers",
+      "kind": "autosave",
+      "schema": { "type": "object", "properties": { "title": { "type": "string" } } },
+      "start": { "title": "A" },
+      "debounce": 0,
+      "steps": [
+        { "change": { "title": "B" }, "how": "choice", "sent": [{ "title": "B" }] },
+        { "change": { "title": "C" }, "how": "choice", "state": "submitting" },
+        { "change": { "title": "D" }, "how": "typed" },
+        { "elapse": 1000 },
+        { "answer": "acknowledged", "sent": [{ "title": "D" }], "state": "submitting" },
+        { "answer": "acknowledged", "state": "idle", "unsaved": false }
+      ]
+    },
+    {
+      "name": "a change back to the record in flight is not sent again",
+      "kind": "autosave",
+      "schema": { "type": "object", "properties": { "title": { "type": "string" } } },
+      "start": { "title": "A" },
+      "debounce": 0,
+      "steps": [
+        { "change": { "title": "B" }, "how": "choice", "sent": [{ "title": "B" }] },
+        { "change": { "title": "C" }, "how": "choice" },
+        { "change": { "title": "B" }, "how": "choice" },
+        { "answer": "acknowledged", "state": "idle", "unsaved": false }
+      ]
+    },
+    {
+      "name": "a change back to the baseline while a write is in flight is held, and sent once the write answers",
+      "kind": "autosave",
+      "schema": { "type": "object", "properties": { "title": { "type": "string" } } },
+      "start": { "title": "A" },
+      "debounce": 0,
+      "steps": [
+        { "change": { "title": "B" }, "how": "choice", "sent": [{ "title": "B" }] },
+        { "change": { "title": "A" }, "how": "choice", "state": "submitting", "unsaved": true },
+        { "answer": "acknowledged", "sent": [{ "title": "A" }], "state": "submitting" },
+        { "answer": "acknowledged", "state": "idle", "unsaved": false }
+      ]
+    },
+    {
+      "name": "a change back to the baseline while a write waits in a queue replaces the queued record",
+      "kind": "autosave",
+      "queued": true,
+      "schema": { "type": "object", "properties": { "title": { "type": "string" } } },
+      "start": { "title": "A" },
+      "debounce": 0,
+      "steps": [
+        { "change": { "title": "B" }, "how": "choice", "state": "submitting" },
+        { "change": { "title": "A" }, "how": "choice", "state": "submitting" },
+        { "begin": true, "sent": [{ "title": "A" }] },
+        { "answer": "acknowledged", "state": "idle", "unsaved": false }
+      ]
+    },
+    {
+      "name": "a failure clears the baseline: nothing is retried until a change, and then any valid record is sent, a reverted one included",
+      "kind": "autosave",
+      "schema": { "type": "object", "properties": { "title": { "type": "string" } } },
+      "start": { "title": "A" },
+      "debounce": 0,
+      "steps": [
+        { "change": { "title": "B" }, "how": "choice", "sent": [{ "title": "B" }] },
+        { "answer": "failed", "state": "error", "unsaved": true },
+        { "elapse": 60000, "state": "error" },
+        { "change": { "title": "A" }, "how": "choice", "sent": [{ "title": "A" }], "state": "submitting" },
+        { "answer": "acknowledged", "state": "idle", "unsaved": false }
+      ]
+    },
+    {
+      "name": "the retry sends the record held now, and the form stays unsaved until a write is acknowledged",
+      "kind": "autosave",
+      "schema": { "type": "object", "properties": { "title": { "type": "string" } } },
+      "start": { "title": "A" },
+      "debounce": 0,
+      "steps": [
+        { "change": { "title": "B" }, "how": "choice", "sent": [{ "title": "B" }] },
+        { "answer": "failed", "state": "error", "unsaved": true },
+        { "retry": true, "sent": [{ "title": "B" }], "state": "submitting" },
+        { "answer": "failed", "state": "error", "unsaved": true },
+        { "retry": true, "sent": [{ "title": "B" }] },
+        { "answer": "acknowledged", "state": "idle", "unsaved": false }
+      ]
+    },
+    {
+      "name": "a change held behind a write that fails is sent when it answers",
+      "kind": "autosave",
+      "schema": { "type": "object", "properties": { "title": { "type": "string" } } },
+      "start": { "title": "A" },
+      "debounce": 0,
+      "steps": [
+        { "change": { "title": "B" }, "how": "choice", "sent": [{ "title": "B" }] },
+        { "change": { "title": "C" }, "how": "choice" },
+        { "answer": "failed", "sent": [{ "title": "C" }], "state": "submitting" },
+        { "answer": "acknowledged", "state": "idle", "unsaved": false }
+      ]
+    },
+    {
+      "name": "a change held behind a write is dropped when the record becomes one the input model refuses",
+      "kind": "autosave",
+      "schema": { "type": "object", "required": ["title"], "properties": { "title": { "type": "string", "minLength": 1 } } },
+      "start": { "title": "A" },
+      "debounce": 0,
+      "steps": [
+        { "change": { "title": "B" }, "how": "choice", "sent": [{ "title": "B" }] },
+        { "change": { "title": "C" }, "how": "choice" },
+        { "change": { "title": "" }, "how": "choice" },
+        { "answer": "acknowledged", "state": "idle", "unsaved": true }
+      ]
+    },
+    {
+      "name": "a write waiting in a serial mutation's queue takes every change made before it starts, and goes as one",
+      "kind": "autosave",
+      "queued": true,
+      "schema": { "type": "object", "properties": { "title": { "type": "string" } } },
+      "start": { "title": "A" },
+      "debounce": 0,
+      "steps": [
+        { "change": { "title": "B" }, "how": "choice", "state": "submitting" },
+        { "change": { "title": "C" }, "how": "typed" },
+        { "change": { "title": "D" }, "how": "choice" },
+        { "begin": true, "sent": [{ "title": "D" }] },
+        { "change": { "title": "E" }, "how": "choice" },
+        { "answer": "acknowledged" },
+        { "begin": true, "sent": [{ "title": "E" }] },
+        { "answer": "acknowledged", "state": "idle", "unsaved": false }
+      ]
+    },
+    {
+      "name": "discarding drops what waits to be sent, and the write in flight still answers",
+      "kind": "autosave",
+      "schema": { "type": "object", "properties": { "title": { "type": "string" } } },
+      "start": { "title": "A" },
+      "debounce": 1000,
+      "steps": [
+        { "change": { "title": "B" }, "how": "choice", "sent": [{ "title": "B" }] },
+        { "change": { "title": "C" }, "how": "typed" },
+        { "discard": true, "state": "submitting" },
+        { "answer": "acknowledged", "state": "idle", "unsaved": true },
+        { "elapse": 1000 }
+      ]
+    }
+  ]
+}

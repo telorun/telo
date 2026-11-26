@@ -1,0 +1,365 @@
+# Calls that each write something `telo check` refuses on the line it was
+# written: row inputs — of a table or of a list — that cannot make a record of
+# the mutation they are handed to or read a root nothing binds there, a key a
+# holder's closed shape does not list, a prompt, an effect, a result or a move
+# the mutation cannot answer for.
+kind: Telo.Application
+metadata: { name: UiInvalidMutationsApp, version: 1.0.0 }
+imports: { Ui: ../../../../, DataModel: ../../../../../data-model }
+---
+kind: Telo.JsonSchema
+metadata: { name: Todo }
+schema:
+  type: object
+  required: [id]
+  properties: { id: { type: integer }, name: { type: string } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Archive }
+schema:
+  type: object
+  additionalProperties: false
+  required: [id]
+  properties: { id: { type: integer }, status: { type: string } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Rename }
+schema:
+  type: object
+  additionalProperties: false
+  required: [name]
+  properties: { name: { type: string } }
+---
+kind: Ui.Mutation
+metadata: { name: archive }
+inputModel: !ref Archive
+url: /api/todos/archive
+---
+kind: Ui.Mutation
+metadata: { name: rename }
+inputModel: !ref Rename
+url: /api/todos/rename
+---
+kind: Ui.CollectionPresentation
+metadata: { name: todos }
+source:
+  kind: Ui.CollectionSource
+  basePath: /api/todos
+  collection:
+    kind: DataModel.Collection
+    model: !ref Todo
+    query: { filters: [], sort: [] }
+---
+# Each map is held to its own mutation's model, so this one is clean.
+kind: Ui.Listing
+metadata: { name: eachItsOwn }
+model: !ref Todo
+presentation: !ref todos
+rowActions:
+  - mutation: !ref archive
+    inputs: { id: !cel "row.id", status: archived }
+    label: Archive
+  - mutation: !ref rename
+    inputs: { name: !cel "row.name" }
+    label: Rename
+    confirm: Rename it?
+---
+kind: Ui.Listing
+metadata: { name: rowMemberUnknown }
+model: !ref Todo
+presentation: !ref todos
+rowActions:
+  - mutation: !ref archive
+    inputs: { id: !cel "row.missing" }
+    label: Archive
+---
+kind: Ui.Listing
+metadata: { name: chainMistyped }
+model: !ref Todo
+presentation: !ref todos
+rowActions:
+  - mutation: !ref archive
+    inputs: { id: !cel "row.name" }
+    label: Archive
+---
+kind: Ui.Listing
+metadata: { name: inputComputed }
+model: !ref Todo
+presentation: !ref todos
+rowActions:
+  - mutation: !ref archive
+    inputs: { id: !cel "row.id + 1" }
+    label: Archive
+---
+kind: Ui.Listing
+metadata: { name: inputsAbsent }
+model: !ref Todo
+presentation: !ref todos
+rowActions:
+  - mutation: !ref rename
+    label: Rename
+---
+kind: Ui.Listing
+metadata: { name: inputsEmpty }
+model: !ref Todo
+presentation: !ref todos
+rowActions:
+  - mutation: !ref rename
+    inputs: {}
+    label: Rename
+---
+kind: Ui.Listing
+metadata: { name: confirmFlag }
+model: !ref Todo
+presentation: !ref todos
+rowActions:
+  - mutation: !ref rename
+    inputs: { name: !cel "row.name" }
+    label: Rename
+    confirm: true
+---
+kind: Ui.Listing
+metadata: { name: confirmEmpty }
+model: !ref Todo
+presentation: !ref todos
+rowActions:
+  - mutation: !ref rename
+    inputs: { name: !cel "row.name" }
+    label: Rename
+    confirm: ""
+---
+kind: Ui.Listing
+metadata: { name: queryTypo }
+model: !ref Todo
+presentation: !ref todos
+query: { status: { type: string } }
+rowActions:
+  - mutation: !ref archive
+    inputs: { id: !cel "row.id", status: !cel "query.statuss" }
+    label: Archive
+---
+# A list's row actions: one reads a root no form binds here, one leaves the
+# mutation's required input unbound.
+kind: Ui.View
+metadata: { name: listRowActions }
+content:
+  type: query
+  query:
+    kind: Ui.Query
+    model:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        properties:
+          todos: { type: array, items: !ref Todo }
+    url: { path: /api/todos }
+  content:
+    - type: list
+      rows: !cel "data.todos"
+      columns: [{ value: !cel "row.name" }]
+      rowActions:
+        - mutation: !ref archive
+          inputs: { id: !cel "row.id", status: !cel "values.folder" }
+          label: Archive
+        - mutation: !ref archive
+          inputs: { status: !cel "row.name" }
+          label: Archive
+---
+kind: Ui.Mutation
+metadata: { name: annotate }
+inputModel:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [id, note]
+    properties: { id: { type: integer }, note: { type: string } }
+url: /api/todos/annotate
+---
+kind: Ui.Mutation
+metadata: { name: unanswered }
+inputModel:
+  kind: Telo.JsonSchema
+  schema: { type: object, additionalProperties: false, required: [id], properties: { id: { type: integer } } }
+url: /api/todos/unanswered
+---
+kind: Ui.Prompt
+metadata: { name: noteAsked }
+model:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [note], properties: { note: { type: string, title: Note } } }
+---
+# A call is a label, a mutation and the inputs it binds: no label is refused.
+kind: Ui.Listing
+metadata: { name: generateNoLabel }
+model: !ref Todo
+presentation: !ref todos
+rowActions:
+  - mutation: !ref archive
+    inputs: { id: !cel "row.id" }
+---
+kind: Ui.Listing
+metadata: { name: promptTrue }
+model: !ref Todo
+presentation: !ref todos
+rowActions:
+  - mutation: !ref archive
+    inputs: { id: !cel "row.id" }
+    label: Archive
+    prompt: true
+---
+kind: Ui.Listing
+metadata: { name: onSuccessTo }
+model: !ref Todo
+presentation: !ref todos
+rowActions:
+  - mutation: !ref archive
+    inputs: { id: !cel "row.id" }
+    label: Archive
+    onSuccess: { to: { kind: Ui.Navigate, href: /todos } }
+---
+kind: Ui.Listing
+metadata: { name: dialogEffect }
+model: !ref Todo
+presentation: !ref todos
+rowActions:
+  - mutation: !ref archive
+    inputs: { id: !cel "row.id" }
+    label: Archive
+    onSuccess:
+      - { kind: Ui.Dialog }
+---
+kind: Ui.Listing
+metadata: { name: inputsNoNote }
+model: !ref Todo
+presentation: !ref todos
+rowActions:
+  - mutation: !ref annotate
+    inputs: { id: !cel "row.id" }
+    label: Annotate
+---
+kind: Ui.Listing
+metadata: { name: promptNoPrompt }
+model: !ref Todo
+presentation: !ref todos
+rowActions:
+  - mutation: !ref annotate
+    inputs: { id: !cel "row.id", note: !cel "prompt.note" }
+    label: Annotate
+---
+kind: Ui.Listing
+metadata: { name: promptAsked }
+model: !ref Todo
+presentation: !ref todos
+rowActions:
+  - mutation: !ref annotate
+    inputs: { id: !cel "row.id", note: !cel "prompt.note" }
+    label: Annotate
+    prompt: !ref noteAsked
+---
+kind: Telo.JsonSchema
+metadata: { name: Task }
+schema:
+  type: object
+  required: [id, status]
+  properties: { id: { type: integer }, status: { type: string, enum: [open, done] } }
+---
+kind: Ui.CollectionPresentation
+metadata: { name: tasks }
+source:
+  kind: Ui.CollectionSource
+  basePath: /api/tasks
+  collection:
+    kind: DataModel.Collection
+    model: !ref Task
+    query: { filters: [{ property: status, operator: eq }], sort: [] }
+---
+kind: Ui.Mutation
+metadata: { name: moveTask }
+inputModel:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [id, status]
+    properties: { id: { type: integer }, status: { type: string } }
+url: /api/tasks/move
+---
+kind: Ui.Listing
+metadata: { name: moveLabel }
+model: !ref Task
+presentation: !ref tasks
+layout:
+  kind: Ui.BoardLayout
+  groups: { property: status }
+  move:
+    mutation: !ref moveTask
+    inputs: { id: !cel "row.id", status: !cel "to.status" }
+    label: Move
+---
+kind: Telo.JsonSchema
+metadata: { name: MoveInput }
+schema:
+  type: object
+  additionalProperties: false
+  required: [id, status]
+  properties: { id: { type: integer }, status: { type: string } }
+---
+kind: Ui.Listing
+metadata: { name: moveDelete }
+model: !ref Task
+presentation: !ref tasks
+layout:
+  kind: Ui.BoardLayout
+  groups: { property: status }
+  move:
+    mutation:
+      kind: Ui.Mutation
+      inputModel: !ref MoveInput
+      method: DELETE
+      url: { path: "/api/todos/{id}", pathParams: { id: !cel "input.id" } }
+    inputs: { id: !cel "row.id", status: !cel "to.status" }
+---
+kind: Ui.Prompt
+metadata: { name: objectEntry }
+model:
+  kind: Telo.JsonSchema
+  schema: { type: object, properties: { note: { type: object, properties: { text: { type: string } } } } }
+fields: [note]
+---
+kind: Ui.Listing
+metadata: { name: resultUnknown }
+model: !ref Todo
+presentation: !ref todos
+rowActions:
+  - mutation: !ref unanswered
+    inputs: { id: !cel "row.id" }
+    label: Check
+    result: { type: value, value: !cel "result.receipt" }
+---
+kind: Ui.View
+metadata: { name: flatButton }
+content:
+  type: button
+  mutation: !ref unanswered
+  inputs: { id: !cel "query.id" }
+  label: Check
+---
+kind: Ui.View
+metadata: { name: queryFailureInput }
+content:
+  type: query
+  query: { kind: Ui.Query, model: !ref Todo, url: /api/todo }
+  content: []
+  failure:
+    - { type: value, value: !cel "input.id" }
+---
+kind: Ui.Listing
+metadata: { name: resultReadsRequest }
+model: !ref Todo
+presentation: !ref todos
+rowActions:
+  - mutation: !ref unanswered
+    inputs: { id: !cel "row.id" }
+    label: Check
+    result: { type: value, value: !cel "row.id", when: !cel "request.ip == 'x'" }

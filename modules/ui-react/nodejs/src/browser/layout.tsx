@@ -2,7 +2,8 @@ import { useMemo, useState, type MouseEventHandler, type ReactNode } from "react
 import { useAside, type AsideSpec } from "./aside.js";
 import { useHost } from "./host.js";
 import { Nodes, type SpecNode } from "./nodes.js";
-import { PressQueueContext, PressQueues } from "./operation.js";
+import { MutationRunner, MutationRunnerContext } from "./mutation-call.js";
+import { FormRecords, FormRecordsContext } from "./form-records.js";
 import { queryRoot } from "./query-root.js";
 import { BottomSlotContext, RootsContext } from "./renderer-context.js";
 
@@ -37,7 +38,9 @@ export function LayoutFrame(props: {
   const [bottom, setBottom] = useState<HTMLElement | null>(null);
   // The regions bind no page variables: one layout is drawn on pages with different ones.
   const roots = useMemo(() => ({ query: queryRoot(undefined, host.location.search), params: {} }), [host.location.search]);
-  const queues = useMemo(() => new PressQueues(), []);
+  const runner = useMemo(() => new MutationRunner(), []);
+  // The regions' forms are the layout's own, as its runner is.
+  const forms = useMemo(() => new FormRecords(), []);
   const folded = aside?.state === "compact";
   const header = layout !== undefined && layout.header.length > 0;
   const footer = layout !== undefined && layout.footer.length > 0;
@@ -47,33 +50,37 @@ export function LayoutFrame(props: {
     <div data-telo-part="app" data-compact={compact ? "true" : undefined} data-fill={fill} data-side={aside !== undefined && !folded ? side : undefined} onClick={onClick}>
       <BottomSlotContext.Provider value={bottom}>
         <RootsContext.Provider value={roots}>
-          <PressQueueContext.Provider value={queues}>
-            {header && (
-              <header data-telo-part="header" data-width={layout.width}>
-                <div data-telo-part="header-content">
-                  {side !== "end" && rail}
-                  <Nodes nodes={layout.header} />
-                  {side === "end" && rail}
-                </div>
-              </header>
-            )}
-            {side !== "end" && aside?.place("aside")}
-            {!header && rail}
-            {aside?.mounted}
-          </PressQueueContext.Provider>
+          <MutationRunnerContext.Provider value={runner}>
+            <FormRecordsContext.Provider value={forms}>
+              {header && (
+                <header data-telo-part="header" data-width={layout.width}>
+                  <div data-telo-part="header-content">
+                    {side !== "end" && rail}
+                    <Nodes nodes={layout.header} />
+                    {side === "end" && rail}
+                  </div>
+                </header>
+              )}
+              {side !== "end" && aside?.place("aside")}
+              {!header && rail}
+              {aside?.mounted}
+            </FormRecordsContext.Provider>
+          </MutationRunnerContext.Provider>
         </RootsContext.Provider>
         {children}
         <RootsContext.Provider value={roots}>
-          <PressQueueContext.Provider value={queues}>
-            {side === "end" && aside?.place("aside")}
-            {footer && (
-              <footer data-telo-part="footer" data-width={layout.width}>
-                <div data-telo-part="footer-content">
-                  <Nodes nodes={layout.footer} />
-                </div>
-              </footer>
-            )}
-          </PressQueueContext.Provider>
+          <MutationRunnerContext.Provider value={runner}>
+            <FormRecordsContext.Provider value={forms}>
+              {side === "end" && aside?.place("aside")}
+              {footer && (
+                <footer data-telo-part="footer" data-width={layout.width}>
+                  <div data-telo-part="footer-content">
+                    <Nodes nodes={layout.footer} />
+                  </div>
+                </footer>
+              )}
+            </FormRecordsContext.Provider>
+          </MutationRunnerContext.Provider>
         </RootsContext.Provider>
         <div ref={setBottom} style={{ display: "contents" }} />
       </BottomSlotContext.Provider>

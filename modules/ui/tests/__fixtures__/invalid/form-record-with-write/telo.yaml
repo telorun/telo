@@ -1,0 +1,33 @@
+# A `record` is a collection write, which `onSubmit` replaces: the kernel
+# refuses the form as `telo check` does.
+kind: Telo.Application
+metadata: { name: UiInvalidFormRecordWithWriteApp, version: 1.0.0 }
+imports: { Ui: ../../../../, DataModel: ../../../../../data-model, Probe: ../../probe }
+targets:
+  - invoke: !ref read
+---
+kind: Telo.JsonSchema
+metadata: { name: Draft }
+schema: { type: object, required: [id], properties: { id: { type: integer }, title: { type: string } } }
+---
+kind: Ui.Form
+metadata: { name: both }
+model: !ref Draft
+record:
+  presentation:
+    kind: Ui.CollectionPresentation
+    source:
+      kind: Ui.CollectionSource
+      basePath: /api/drafts
+      collection:
+        kind: DataModel.Collection
+        model: !ref Draft
+        schemas: { create: !ref Draft }
+        query: { filters: [], sort: [] }
+onSubmit:
+  mutation: { kind: Ui.Mutation, inputModel: !ref Draft, url: /api/drafts }
+  inputs: { id: !cel "values.id", title: !cel "values.title" }
+---
+kind: Probe.Read
+metadata: { name: read }
+source: !ref both

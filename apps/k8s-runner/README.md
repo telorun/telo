@@ -88,7 +88,9 @@ neither.
 `9230`–`9237`, whatever the app set, because every container of a pod shares one
 network namespace. An app declaring one is refused (`400 port_conflict` on a
 create or `PUT …/apps`, `rejected` on a reload's `endpoints` event), naming what
-binds it. The runner reaches both over the pod IP; neither is published.
+binds it. Neither is published: the runner reaches each supervisor over the pod
+IP, and the debug port is bound to the pod's loopback, reached only through the
+app's supervisor slot.
 
 **Every container runs as the session user**, the session file's `user`
 (`{ uid, gid }`, default `1000:1000` — the kernel image's `node` user), set once on
@@ -156,7 +158,7 @@ independent supervisors in the one container, each with its own run.
 
 The runner holds one WebSocket per app slot to `ws://<podIP>:<9330 + slot>/v1/supervisor`
 with the container's token. Run sends the argv core builds
-(`telo run --watch --no-input --inspect 0.0.0.0:<9230 + slot> --no-open <entry>`),
+(`telo run --watch --no-input --inspect 127.0.0.1:<9230 + slot> --no-open <entry>`),
 the Run's env and `io`; the supervisor starts it in a process group of its own on a
 fresh pty (`tty`) or pipes (`streams`), and reports `started` and `exited`, which
 become the app's `running` and `ready` events. Stop is SIGTERM to the group, then

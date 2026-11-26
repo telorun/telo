@@ -1,3 +1,4 @@
+import { capabilitiesAt, runnerTitle, type AnsweredCapabilities } from "./runner-title";
 import type { JSONSchema7 } from "json-schema";
 import { useEffect, useMemo, useState } from "react";
 
@@ -6,6 +7,7 @@ import { Button } from "../../components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -42,14 +44,14 @@ export function RunnerEditDialog({
   onSave,
 }: RunnerEditDialogProps) {
   const [config, setConfig] = useState<Record<string, unknown>>({});
-  const [caps, setCaps] = useState<RunnerCapabilities | null>(null);
+  const [answered, setAnswered] = useState<AnsweredCapabilities<RunnerCapabilities> | null>(null);
   const [fetching, setFetching] = useState(false);
   const [notice, setNotice] = useState<{ text: string; tone: "warn" | "error" } | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setConfig({ ...((initialConfig ?? adapter.defaultConfig) as Record<string, unknown>) });
-    setCaps(null);
+    setAnswered(null);
     setNotice(null);
   }, [open, initialConfig, adapter]);
 
@@ -66,7 +68,7 @@ export function RunnerEditDialog({
       try {
         const next = await adapter.fetchCapabilities!({ ...config, baseUrl } as never);
         if (cancelled) return;
-        setCaps(next);
+        setAnswered({ url: baseUrl, caps: next });
         if (next) {
           setConfig((prev) => applySchemaDefaults(next.config.schema as JSONSchema7, prev));
         } else {
@@ -77,7 +79,7 @@ export function RunnerEditDialog({
         }
       } catch (err) {
         if (cancelled) return;
-        setCaps(null);
+        setAnswered({ url: baseUrl, caps: null });
         setNotice({
           text: err instanceof Error ? err.message : "Failed to load runner capabilities.",
           tone: "error",
@@ -93,6 +95,7 @@ export function RunnerEditDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, baseUrl, adapter]);
 
+  const caps = capabilitiesAt(baseUrl, answered);
   const mergedSchema = useMemo(
     // A field the runner deprecates no longer decides anything on a runner that
     // advertises it so, and is not offered.
@@ -100,9 +103,9 @@ export function RunnerEditDialog({
     [adapter, caps],
   );
 
-  // The runner labels itself; fall back to the existing label, then the
-  // adapter's generic name, when it advertises nothing.
-  const resolvedName = caps?.displayName ?? initialName ?? adapter.displayName;
+  // An edit keeps the runner's stored name; a new runner takes the name it
+  // advertises, else the adapter's generic one.
+  const resolvedName = runnerTitle(initialName, caps?.displayName, adapter.displayName);
   const resolvedDescription = caps?.description ?? initialDescription;
   const issues = adapter.validateConfig(config as never);
   const canSave = issues.length === 0;
@@ -112,6 +115,9 @@ export function RunnerEditDialog({
       <DialogContent className="sm:max-w-120">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit runner" : "Add runner"}</DialogTitle>
+          <DialogDescription>
+            {isEdit ? "Change where this runner is reached." : "Enter the address of a runner to run applications on."}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-3">

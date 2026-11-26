@@ -69,7 +69,7 @@ export interface DeclaredSurface {
 }
 
 /** The nodes a panel is drawn beside: the composites holding what is pressed. */
-const COMPOSITE_TYPES = new Set(["listing", "split", "form", "action", "filters", "chat"]);
+const COMPOSITE_TYPES = new Set(["listing", "split", "form", "filters", "chat"]);
 /** The nodes whose own regions bind `row`. */
 const ROW_TYPES = new Set(["listing", "list"]);
 /** The nodes that are the element pressed when they hold a `to`, or a press. */
@@ -80,18 +80,14 @@ const typeOf = (node: object | undefined): string | undefined => (typeof (node a
 /** What the nodes above a declaration place a page against. */
 function anchorsOf(path: readonly object[]): DeclaredSurface["anchors"] {
   const anchors: DeclaredSurface["anchors"] = {};
-  let nodes = path.filter((each) => typeOf(each) !== undefined);
-  // A `button` node reaches a destination only through its own action, which is never drawn as an element of its own: the button is the pressed element and its action no composite.
-  const last = nodes[nodes.length - 1];
-  const button = nodes[nodes.length - 2];
-  const ofButton = typeOf(last) === "action" && typeOf(button) === "button" && (button as { action?: unknown }).action === last;
-  if (ofButton) nodes = nodes.slice(0, -1);
+  const nodes = path.filter((each) => typeOf(each) !== undefined);
   // The composite is the nearest one holding the declaration, outside every row region.
   const at = nodes.findLastIndex((each) => COMPOSITE_TYPES.has(typeOf(each) as string));
   if (at >= 0 && !nodes.slice(0, at).some((each) => ROW_TYPES.has(typeOf(each) as string))) anchors.composite = nodes[at];
   // The declaring node is the pressed element: it holds the `to` itself (a link) or its press (a box, stack, columns, button).
+  // A `button` node holds its call, which is no node of its own: the button is the pressed element.
   const holder = path[path.length - 1];
-  const pressed = ofButton ? button : typeOf(holder) !== undefined ? holder : path[path.length - 2];
+  const pressed = typeOf(holder) !== undefined ? holder : path[path.length - 2];
   if (pressed !== undefined && PRESSED_TYPES.has(typeOf(pressed) as string) && !nodes.some((each) => ROW_TYPES.has(typeOf(each) as string))) anchors.pressed = pressed;
   return anchors;
 }

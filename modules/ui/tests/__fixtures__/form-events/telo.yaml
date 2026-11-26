@@ -1,0 +1,332 @@
+kind: Telo.Application
+metadata: { name: FormEvents }
+lang: en
+imports:
+  Http: ../../../../http-server
+  Ui: ../../../
+  UiReact: ../../../../ui-react
+  DataModel: ../../../../data-model
+ports: { http: { env: PORT, protocol: tcp, default: 8160 } }
+translations:
+  catalogs: [{ kind: Ui.Translations, lang: en, messages: { saving: Saving the draft…, retry: Try again } }]
+targets:
+  - !ref server
+---
+kind: Telo.JsonSchema
+metadata: { name: PreviewRequest }
+schema:
+  type: object
+  additionalProperties: false
+  required: [period, columns, showChart, team]
+  properties:
+    period:
+      type: object
+      additionalProperties: false
+      required: [from, to]
+      properties: { from: { type: string, format: date }, to: { type: string, format: date } }
+    columns: { type: string, enum: [short, full], default: short }
+    showChart: { type: boolean, default: false }
+    team: { type: string, enum: [north, south], default: north }
+---
+kind: Telo.JsonSchema
+metadata: { name: PreviewAnswer }
+schema:
+  type: object
+  required: [items]
+  properties:
+    items:
+      type: array
+      items:
+        type: object
+        required: [name, hours]
+        properties: { name: { type: string }, hours: { type: number } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Person }
+schema:
+  type: object
+  required: [id, name, team, status]
+  properties:
+    id: { type: integer }
+    name: { type: string }
+    team: { type: string, enum: [north, south] }
+    status: { type: string, enum: [active, away] }
+---
+# Named: the board lists it and the create page's form writes it.
+kind: Ui.CollectionPresentation
+metadata: { name: peoplePresentation }
+source:
+  kind: Ui.CollectionSource
+  basePath: /api/people
+  collection:
+    kind: DataModel.Collection
+    model: !ref Person
+    schemas:
+      create:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [name, team, status]
+          properties:
+            name: { type: string }
+            team: { type: string, enum: [north, south] }
+            status: { type: string, enum: [active, away] }
+    query: { filters: [{ property: team, operator: eq }, { property: status, operator: eq }], sort: [] }
+---
+kind: Telo.JsonSchema
+metadata: { name: DraftModel }
+schema:
+  type: object
+  additionalProperties: false
+  properties: { title: { type: string, title: Title }, body: { type: string, title: Body } }
+---
+# Named: the preview page places it, and the query and the listing beside it name it.
+kind: Ui.Form
+metadata: { name: previewForm }
+model: !ref PreviewRequest
+fields:
+  - kind: Ui.DateRangeField
+    property: period
+    presets: [{ label: This month, unit: month, offset: 0 }, { label: Previous month, unit: month, offset: -1 }]
+    initialPreset: This month
+  - { kind: Ui.InputField, property: columns, control: options }
+  - { kind: Ui.InputField, property: showChart, control: toggle }
+  - { kind: Ui.InputField, property: team, control: options }
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { method: QUERY, path: /preview }
+    handler: { kind: Telo.Value, value: { items: [{ name: Ada, hours: 12 }, { name: Grace, hours: 9 }] } }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            schema: !ref PreviewAnswer
+            body: !cel "result"
+  - request: { method: POST, path: /generate }
+    handler: { kind: Telo.Value, value: {} }
+    returns: [{ status: 204 }]
+  - request: { method: GET, path: /people }
+    handler: { kind: Telo.Value, value: { rows: [{ id: 1, name: Ada, team: north, status: active }], total: 1 } }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            schema: { type: object, required: [rows, total], properties: { rows: { type: array, items: !ref Person }, total: { type: integer } } }
+            body: !cel "result"
+  - request: { method: POST, path: /people }
+    handler: { kind: Telo.Value, value: { id: 2, name: Grace, team: south, status: active } }
+    returns:
+      - status: 201
+        content:
+          application/json:
+            schema: !ref Person
+            body: !cel "result"
+  - request: { method: GET, path: "/people/{id}" }
+    handler: { kind: Telo.Value, value: { id: 2, name: Grace, team: south, status: active } }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            schema: !ref Person
+            body: !cel "result"
+  - request: { method: PATCH, path: "/people/{id}" }
+    handler: { kind: Telo.Value, value: {} }
+    returns: [{ status: 204 }]
+  - request: { method: POST, path: /posts }
+    handler: { kind: Telo.Value, value: { id: "1" } }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            schema: { type: object, required: [id], properties: { id: { type: string } } }
+            body: !cel "result"
+  - request: { method: GET, path: "/posts/{id}" }
+    handler: { kind: Telo.Value, value: { title: First post, body: Hello } }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            schema: !ref DraftModel
+            body: !cel "result"
+  - request: { method: PUT, path: "/posts/{id}" }
+    handler: { kind: Telo.Value, value: {} }
+    returns: [{ status: 204 }]
+  - request: { method: POST, path: "/posts/{id}/publish" }
+    handler: { kind: Telo.Value, value: {} }
+    returns: [{ status: 204 }]
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: !cel "ports.http" }
+mounts:
+  - { path: /api, mount: !ref api }
+  - path: /
+    mount:
+      kind: UiReact.App
+      title: Live forms
+      theme: !ref UiReact.defaultTheme
+      pages:
+        - kind: Ui.Page
+          path: /preview
+          title: Preview
+          children:
+            - type: columns
+              children:
+                - { type: composite, ref: !ref previewForm }
+                # Read when the form first holds a valid record, and after every settled change.
+                - type: query
+                  query:
+                    kind: Ui.Query
+                    form: !ref previewForm
+                    model: !ref PreviewAnswer
+                    url: /api/preview
+                    input:
+                      model: !ref PreviewRequest
+                      body:
+                        period: !cel "form.period"
+                        columns: !cel "form.columns"
+                        showChart: !cel "form.showChart"
+                        team: !cel "form.team"
+                  content:
+                    - type: list
+                      rows: !cel "data.items"
+                      columns: [{ header: Name, value: !cel "row.name" }, { header: Hours, value: !cel "row.hours" }]
+                      rowActions:
+                        - mutation:
+                            kind: Ui.Mutation
+                            inputModel:
+                              kind: Telo.JsonSchema
+                              schema:
+                                type: object
+                                required: [name, columns, note]
+                                properties: { name: { type: string }, columns: { type: string, enum: [short, full] }, note: { type: string } }
+                            url: /api/generate
+                            invalidates: [/api/preview]
+                          inputs: { name: !cel "row.name", columns: !cel "form.columns", note: !cel "prompt.note" }
+                          label: Generate
+                          prompt:
+                            kind: Ui.Prompt
+                            model:
+                              kind: Telo.JsonSchema
+                              schema:
+                                type: object
+                                required: [note]
+                                properties: { note: { type: string, title: Note, minLength: 1 } }
+                          result: { type: text, text: Generated }
+                          failure: { type: text, text: Not generated — try again later. }
+            # Follows the team the form holds, as the query does; dragging a card moves the person.
+            - type: composite
+              ref:
+                kind: Ui.Listing
+                form: !ref previewForm
+                model: !ref Person
+                presentation: !ref peoplePresentation
+                filters: { team: !cel "form.team" }
+                layout:
+                  kind: Ui.BoardLayout
+                  groups: { property: status }
+                  move:
+                    mutation:
+                      kind: Ui.Mutation
+                      inputModel:
+                        kind: Telo.JsonSchema
+                        schema:
+                          type: object
+                          required: [id, status]
+                          properties: { id: { type: integer }, status: { type: string, enum: [active, away] } }
+                      method: PATCH
+                      url: { path: "/api/people/{id}", pathParams: { id: !cel "input.id" } }
+                    inputs: { id: !cel "row.id", status: !cel "to.status" }
+                    failure: { type: text, text: Not moved. }
+        - kind: Ui.Page
+          path: /people/new
+          title: New person
+          children:
+            - type: composite
+              ref:
+                kind: Ui.Form
+                model:
+                  kind: Telo.JsonSchema
+                  schema:
+                    type: object
+                    required: [name, team, status]
+                    properties:
+                      name: { type: string, title: Name }
+                      team: { type: string, enum: [north, south] }
+                      status: { type: string, enum: [active, away] }
+                record: { presentation: !ref peoplePresentation }
+                afterSubmit: keep
+                # The default write's answer is the stored person, typed from the collection's model.
+                onSuccess:
+                  - { kind: Ui.Navigate, href: { path: "/people/{id}", pathParams: { id: !cel "result.id" } } }
+        - kind: Ui.Page
+          path: /people/{id}
+          title: Person
+          children:
+            - type: query
+              query:
+                kind: Ui.Query
+                model: !ref Person
+                url: { path: "/api/people/{id}", pathParams: { id: !cel "params.id" } }
+              content: [{ type: value, value: !cel "data.name" }]
+        - kind: Ui.Page
+          path: /posts/new
+          title: New post
+          children:
+            - type: button
+              action:
+                mutation:
+                  kind: Ui.Mutation
+                  inputModel: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: false, properties: {} } }
+                  outputModel: { kind: Telo.JsonSchema, schema: { type: object, required: [id], properties: { id: { type: string } } } }
+                  url: /api/posts
+                inputs: {}
+                label: Start a draft
+                onSuccess:
+                  - { kind: Ui.Navigate, href: { path: "/posts/{id}", pathParams: { id: !cel "result.id" } } }
+        - kind: Ui.Page
+          path: /posts/{id}
+          title: Edit post
+          children:
+            - type: query
+              query:
+                kind: Ui.Query
+                model: !ref DraftModel
+                url: { path: "/api/posts/{id}", pathParams: { id: !cel "params.id" } }
+              content:
+                - type: composite
+                  ref:
+                    kind: Ui.Form
+                    model: !ref DraftModel
+                    initialValues: !cel "data"
+                    clearAnswerOn: [title]
+                    autosave:
+                      mutation:
+                        kind: Ui.Mutation
+                        inputModel:
+                          kind: Telo.JsonSchema
+                          schema:
+                            type: object
+                            required: [id]
+                            properties: { id: { type: string }, title: { type: string }, body: { type: string } }
+                        method: PUT
+                        url: { path: "/api/posts/{id}", pathParams: { id: !cel "input.id" } }
+                      inputs: { id: !cel "params.id", title: !cel "values.title", body: !cel "values.body" }
+                      debounce: 1s
+                    onSubmit:
+                      mutation:
+                        kind: Ui.Mutation
+                        inputModel:
+                          kind: Telo.JsonSchema
+                          schema:
+                            type: object
+                            required: [id, title, body]
+                            properties: { id: { type: string }, title: { type: string, minLength: 1 }, body: { type: string, minLength: 1 } }
+                        url: { path: "/api/posts/{id}/publish", pathParams: { id: !cel "input.id" } }
+                      inputs: { id: !cel "params.id", title: !cel "values.title", body: !cel "values.body" }
+                      label: Publish
+                      confirm: Publish this post?
+                    onSuccess:
+                      - { kind: Ui.Navigate, href: /posts/new }

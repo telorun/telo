@@ -34,13 +34,12 @@ source:
     model: !ref Todo
     query: { filters: [], sort: [] }
 ---
-kind: Ui.Action
+kind: Ui.Mutation
 metadata: { name: remove }
 inputModel: !ref Removal
-request: { target: /api/todos/remove }
-label: Remove
+url: /api/todos/remove
 ---
-kind: Ui.Action
+kind: Ui.Mutation
 metadata: { name: removeAndShow }
 inputModel: !ref Removal
 outputModel:
@@ -48,26 +47,27 @@ outputModel:
   schema:
     type: object
     properties: { receipt: { type: string, format: uri-reference } }
-request: { target: /api/todos/remove }
-label: Remove
-result: { type: value, value: !cel "result.receipt", text: Receipt }
-onSuccess: { refreshes: [/api/todos] }
+url: /api/todos/remove
+invalidates: [/api/todos]
 ---
 kind: Ui.Listing
 metadata: { name: listless }
 model: !ref Todo
 presentation: !ref todos
 rowActions:
-  - action: !ref remove
+  - mutation: !ref remove
     inputs: { count: !cel "row.count" }
+    label: Remove
 ---
 kind: Ui.Listing
 metadata: { name: answered }
 model: !ref Todo
 presentation: !ref todos
 rowActions:
-  - action: !ref removeAndShow
+  - mutation: !ref removeAndShow
     inputs: { count: !cel "row.count" }
+    label: Remove
+    result: { type: value, value: !cel "result.receipt", text: Receipt }
     enabled: { at: !cel "row.count", matches: { minimum: 1 }, disabledText: Nothing to remove. }
 ---
 kind: Ui.View
@@ -88,5 +88,7 @@ content:
       rows: !cel "data.todos"
       columns: [{ value: !cel "row.text" }]
       rowActions:
-        - action: !ref removeAndShow
+        - mutation: !ref removeAndShow
           inputs: { count: !cel "row.count" }
+          label: Remove
+          result: { type: value, value: !cel "result.receipt", text: Receipt }

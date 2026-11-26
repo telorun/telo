@@ -11,6 +11,7 @@ import {
   AlertDialogTitle,
 } from "./ui/alert-dialog";
 import { Button } from "./ui/button";
+import { reflowRunnerTerms } from "./runner-terms-reflow";
 import { Checkbox } from "./ui/checkbox";
 
 interface TermsGateDialogProps {
@@ -46,8 +47,18 @@ export function TermsGateDialog({ terms, onAccept, onDecline }: TermsGateDialogP
           </AlertDialogDescription>
         </AlertDialogHeader>
 
-        <div className="max-h-[50vh] overflow-auto rounded-md border bg-muted/30 p-3 text-sm whitespace-pre-wrap text-foreground">
-          {terms?.body}
+        <div className="max-h-[50vh] space-y-2 overflow-auto rounded-md border bg-muted/30 p-3 text-sm text-foreground">
+          {reflowRunnerTerms(terms?.body ?? "").map((block, index) =>
+            block.kind === "paragraph" ? (
+              <p key={index}>{block.text}</p>
+            ) : (
+              <ul key={index} className="list-disc space-y-1 pl-5">
+                {block.items.map((item, itemIndex) => (
+                  <li key={itemIndex}>{item}</li>
+                ))}
+              </ul>
+            ),
+          )}
         </div>
 
         <label className="flex items-start gap-2 text-sm">

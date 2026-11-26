@@ -1,0 +1,4 @@
+units:
+  apps/hub: Fixed
+body: The get_kinds tool description names Self.MutationCall, not the removed
+  Self.BoundAction, as its example of a named shape.

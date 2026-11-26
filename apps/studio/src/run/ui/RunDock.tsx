@@ -18,6 +18,7 @@ import type { RunBlocker, RunRecord } from "../context";
 import type { RunWait, WorkspaceSessionState } from "../workspace-session";
 import { OpenUrlNotices } from "./OpenUrlNotices";
 import { RunOutput } from "./RunOutput";
+import { programEnd } from "../program-end";
 import { RunStatusChip } from "./RunStatusChip";
 import { describeTeloAlignment, staleRunVersion, teloAlignment } from "../telo-alignment";
 import { useElapsed } from "./use-elapsed";
@@ -63,7 +64,8 @@ export function RunDock({ appPath, appName, editedTelo, onOpenConfig }: RunDockP
   const blocker = blockerForApp(appPath);
   const sessionApp = appNameOf(appPath);
   const dock = dockForApp(appPath);
-  const elapsed = useElapsed(live?.startedAt ?? null);
+  const liveEnd = live ? programEnd(live) : null;
+  const elapsed = useElapsed(live?.startedAt ?? null, liveEnd?.endedAt);
 
   const frame = useRef<HTMLDivElement | null>(null);
   const dragFrom = useRef<{ y: number; height: number } | null>(null);
@@ -146,7 +148,7 @@ export function RunDock({ appPath, appName, editedTelo, onOpenConfig }: RunDockP
       >
         <ChevronUp className="size-3" aria-hidden />
         <span className="font-medium">{headline}</span>
-        {run && !blocker && <RunStatusChip status={run.status} />}
+        {run && !blocker && <RunStatusChip status={run.status} ended={programEnd(run)} />}
         {elapsed && <span className="tabular-nums text-zinc-500">{elapsed}</span>}
         <span className="flex-1" />
         <span className="text-zinc-400 dark:text-zinc-500">Show output</span>
@@ -177,7 +179,7 @@ export function RunDock({ appPath, appName, editedTelo, onOpenConfig }: RunDockP
         <span className="whitespace-nowrap text-xs font-medium text-zinc-600 dark:text-zinc-300">
           {headline}
         </span>
-        {run && !blocker && <RunStatusChip status={run.status} />}
+        {run && !blocker && <RunStatusChip status={run.status} ended={programEnd(run)} />}
         {elapsed && (
           <span className="tabular-nums text-xs text-zinc-500 dark:text-zinc-400">{elapsed}</span>
         )}

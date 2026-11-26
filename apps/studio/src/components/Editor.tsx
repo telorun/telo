@@ -39,6 +39,7 @@ import {
   galleryVersionOf,
   renameResourceFieldKey,
   moveResourceFieldItem,
+  recentWorkspaceLabel,
   relocateResourceFieldItem,
   removeResourceFieldItem,
   setModuleRootFields,
@@ -148,6 +149,7 @@ import { useVersionCompatibility } from "./sidebar/useVersionCompatibility";
 import { useWorkspaceImportUpgrades } from "./sidebar/useWorkspaceImportUpgrades";
 import { ImportLookupNotice } from "./sidebar/ImportLookupNotice";
 import { OpenUrlDialog } from "./OpenUrlDialog";
+import { termsGateToShow } from "../run/terms-gate";
 import { TermsGateDialog } from "./TermsGateDialog";
 import { WorkspaceModeDialog } from "./WorkspaceModeDialog";
 import { TopBar } from "./TopBar";
@@ -540,11 +542,24 @@ export function Editor() {
 
   // The runner's terms gate a session's create: shown here, accepted per
   // runner and version.
-  const sessionTerms = runContext.session?.phase === "terms" ? runContext.session.terms : null;
+  const activeRunnerId = activeRunner?.id ?? null;
+  // The runner whose terms were declined: not asked again until the user acts.
+  const [declinedTermsRunnerId, setDeclinedTermsRunnerId] = useState<string | null>(null);
   useEffect(() => {
-    if (!sessionTerms || !activeRunner) return;
-    setTermsGate({ terms: sessionTerms, runnerId: activeRunner.id, resume: { kind: "session" } });
-  }, [sessionTerms, activeRunner]);
+    // Selecting another runner is the user acting on the declined one's terms.
+    if (declinedTermsRunnerId !== null && declinedTermsRunnerId !== activeRunnerId) setDeclinedTermsRunnerId(null);
+  }, [activeRunnerId, declinedTermsRunnerId]);
+  const sessionTerms = termsGateToShow({
+    session: runContext.session,
+    activeRunnerId,
+    declinedRunnerId: declinedTermsRunnerId,
+  });
+  useEffect(() => {
+    // A pending gate of a runner that is no longer active is dropped.
+    setTermsGate((gate) => (gate && gate.runnerId !== activeRunnerId ? null : gate));
+    if (!sessionTerms || !activeRunnerId) return;
+    setTermsGate({ terms: sessionTerms, runnerId: activeRunnerId, resume: { kind: "session" } });
+  }, [sessionTerms, activeRunnerId]);
 
   // With no workspace open, the closed-workspace screen takes a request when
   // the active runner offers the agent: asked of the runner only then.
@@ -861,7 +876,8 @@ export function Editor() {
       });
       return;
     }
-    if (session?.phase === "terms" && session.terms) {
+    if (session?.phase === "terms" && session.terms && session.runnerId === runner.id) {
+      setDeclinedTermsRunnerId(null);
       setTermsGate({ terms: session.terms, runnerId: runner.id, resume: { kind: "session" } });
       return;
     }
@@ -2453,7 +2469,15 @@ export function Editor() {
             onOpen={handleOpen}
             onStartFromStarter={() => setCreateModuleKind("Application")}
             openMode={openMode}
-            recentRootDir={persistedHint?.rootDir}
+            recent={
+              recentWorkspaceLabel(persistedHint)
+                ? {
+                    label: recentWorkspaceLabel(persistedHint)!,
+                    opensBrowserWorkspace: persistedHint?.backend === "browser",
+                  }
+                : null
+            }
+            onOpenBrowserWorkspace={() => void switchWorkspace(openBrowserWorkspace())}
             onBuild={agentVisible ? buildInBrowserWorkspace : undefined}
           />
         ) : (
@@ -2665,7 +2689,10 @@ export function Editor() {
           }
           if (resume.kind === "run") void handleRunModuleRef.current(resume.filePath);
         }}
-        onDecline={() => setTermsGate(null)}
+        onDecline={() => {
+          if (termsGate) setDeclinedTermsRunnerId(termsGate.runnerId);
+          setTermsGate(null);
+        }}
       />
       <AlertDialog open={pendingImport !== null} onOpenChange={onImportDialogOpenChange}>
         <AlertDialogContent className="sm:max-w-md">

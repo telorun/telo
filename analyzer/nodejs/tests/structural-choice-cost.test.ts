@@ -48,6 +48,8 @@ const structural = (k: number) => row(k, () => "1 + 'a'", true);
 const celRead = (k: number) => row(k, (i) => (i > 1 ? `resources.e${i - 1}` : undefined));
 const inputsRow = (k: number) => row(k, () => undefined, false, true);
 
+const TIMING_RUNS = 5;
+
 interface Measured {
   readonly findings: readonly { code: string; message: string; path: unknown }[];
   /** Keys judged, per family, and the entries of every union pass's table. */
@@ -69,15 +71,23 @@ async function measure(name: string, text: string): Promise<Measured> {
   const stopRuns = observeAnalysisRuns((purpose) => {
     if (purpose === "configuration" || purpose === "unreachable") runs++;
   });
-  const started = performance.now();
+  const analyze = () =>
+    new StaticAnalyzer().analyze(loaded.manifests, { moduleDocuments: loaded.moduleDocuments, positions: loaded.positions });
+  let started = performance.now();
   let diagnostics: AnalysisDiagnostic[];
   try {
-    diagnostics = new StaticAnalyzer().analyze(loaded.manifests, { moduleDocuments: loaded.moduleDocuments, positions: loaded.positions });
+    diagnostics = analyze();
   } finally {
     stop();
     stopRuns();
   }
-  const seconds = (performance.now() - started) / 1000;
+  // The fastest of several runs: one wall-clock sample on a shared runner is noise.
+  let seconds = (performance.now() - started) / 1000;
+  for (let i = 1; i < TIMING_RUNS; i++) {
+    started = performance.now();
+    analyze();
+    seconds = Math.min(seconds, (performance.now() - started) / 1000);
+  }
   const findings = diagnostics
     .filter((d) => d.code === "CEL_TYPE_ERROR" || d.code === "CEL_UNKNOWN_FIELD" || d.code === "TEMPLATE_REF_UNKNOWN")
     .map((d) => ({ code: String(d.code), message: d.message, path: (d.data as { path?: unknown } | undefined)?.path }));

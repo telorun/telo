@@ -368,20 +368,6 @@ schema:
     url: { type: string, format: uri, title: Drawing }
     summary: { type: string, title: What was drawn }
 ---
-# The agent converges over several model calls, so a press takes a while.
-kind: Ui.Action
-metadata: { name: drawAction }
-inputModel: !ref DrawingRequest
-outputModel: !ref Drawing
-request: { target: /v1/drawings }
-label: Draw
-concurrency: serial
-result:
-  type: stack
-  children:
-    - { type: value, value: !cel "result.summary" }
-    - { type: value, value: !cel "result.url", text: Open the drawing }
----
 kind: Ui.Page
 metadata: { name: drawPage }
 path: /
@@ -390,7 +376,25 @@ width: contained
 children:
   - { type: text, text: Describe a layout, style: title }
   - { type: text, text: "For example: a red square top-left and a blue circle centered. The agent draws, reviews its own picture and redraws until it matches.", style: muted }
-  - { type: composite, ref: !ref drawAction }
+  - type: composite
+    ref:
+      kind: Ui.Form
+      model: !ref DrawingRequest
+      onSubmit:
+        # The agent converges over several model calls, so a press takes a while.
+        mutation:
+          kind: Ui.Mutation
+          inputModel: !ref DrawingRequest
+          outputModel: !ref Drawing
+          url: /v1/drawings
+          concurrency: serial
+        inputs: { prompt: !cel "values.prompt" }
+        label: Draw
+        result:
+          type: stack
+          children:
+            - { type: value, value: !cel "result.summary" }
+            - { type: value, value: !cel "result.url", text: Open the drawing }
 ---
 kind: UiReact.App
 metadata: { name: ui }

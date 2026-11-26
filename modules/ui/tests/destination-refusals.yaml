@@ -27,7 +27,7 @@ expect:
     - code: SCHEMA_VIOLATION
       message: "Ui.Page/homePage: /children/6/content/0 must NOT have additional properties ('href' is not allowed)"
     - code: SCHEMA_VIOLATION
-      message: "Ui.Page/homePage: /children/8/ref/onSuccess must NOT have additional properties ('navigate' is not allowed)"
+      message: "Ui.Page/homePage: /children/8/ref/onSuccess must be array"
     - code: PATH_PARAMETER_UNBOUND
       message: "Ui.Page/homePage: the template 'path: /authors/{id}' of 'authorPage' (named at 'page') reads '{id}', which 'pathParams' does not bind. Add 'id' to 'pathParams'."
     - code: UNDEFINED_KIND

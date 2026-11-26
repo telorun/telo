@@ -280,7 +280,7 @@ otherwise); a reference that does not resolve skips the rule for that referrer
 where the condition reads it.
 
 **A code names one rule per `referrer:` filter.** The same judgement declared
-once per owner kind — `referrer: Self.Form` and `referrer: Self.Action` — keeps
+once per owner kind — `referrer: Self.Form` and `referrer: Self.Prompt` — keeps
 one code, told apart by the referrer it judges; two rules sharing both a code
 and a filter are refused.
 

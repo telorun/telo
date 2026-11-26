@@ -124,7 +124,7 @@ compact:
   layout's `row` is one record of the collection's list shape, so a column or a
   card reads only what the list returns.
 - A board's `move` names an operation the application declares itself — a
-  `Ui.Action` over a route of its own — since the collection's API serves no
+  `Ui.Mutation` over a route of its own — since the collection's API serves no
   move route.
 
 A surface, a placement, a store, a layout and a destination are resources of

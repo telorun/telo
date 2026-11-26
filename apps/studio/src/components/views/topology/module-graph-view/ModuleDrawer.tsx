@@ -26,6 +26,8 @@ import { groupTotal, isEmpty, type DrawerGroups } from "./drawer-groups";
  */
 export interface ModuleDrawerProps {
   groups: DrawerGroups;
+  /** A node's kind as this module writes it. */
+  kindLabel: (node: GraphNode) => string;
   /** How many boxes hold each off-canvas declaration, by node id — the fan-in
    *  the canvas no longer draws. */
   heldBy: ReadonlyMap<string, number>;
@@ -44,6 +46,7 @@ export interface ModuleDrawerProps {
 
 export function ModuleDrawer({
   groups,
+  kindLabel,
   heldBy,
   open,
   onToggle,
@@ -89,12 +92,14 @@ export function ModuleDrawer({
         type="button"
         className="flex items-center gap-1.5 border-b border-zinc-100 px-2 py-1.5 text-left max-md:min-h-9 dark:border-zinc-800"
         onClick={onToggle}
-        title={shown ? "Hide" : `${groupTotal(groups)} not drawn on the canvas`}
+        title={shown ? "Hide" : `Show what is not drawn on the canvas (${groupTotal(groups)})`}
       >
         <Shapes className="size-3.5 shrink-0 text-zinc-400" />
         {shown && (
           <>
-            <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">Module</span>
+            <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">
+              Not on the canvas
+            </span>
             <span className="ml-auto text-[10px] text-zinc-400">{groupTotal(groups)}</span>
             {!sole && <ChevronRight className="size-3 shrink-0 text-zinc-400" />}
           </>
@@ -107,6 +112,7 @@ export function ModuleDrawer({
               <InstanceRow
                 key={node.id}
                 node={node}
+                kindLabel={kindLabel(node)}
                 icon={Database}
                 held={heldBy.get(node.id) ?? 0}
                 selected={picked(node)}
@@ -119,6 +125,7 @@ export function ModuleDrawer({
               <InstanceRow
                 key={node.id}
                 node={node}
+                kindLabel={kindLabel(node)}
                 icon={Braces}
                 held={heldBy.get(node.id) ?? 0}
                 selected={picked(node)}
@@ -139,18 +146,38 @@ export function ModuleDrawer({
               />
             ))}
           </Group>
-          <Group label="Resources" count={groups.resources.length}>
-            {groups.resources.map((node) => (
-              <InstanceRow
-                key={node.id}
-                node={node}
-                icon={PackageOpen}
-                held={heldBy.get(node.id) ?? 0}
-                selected={picked(node)}
-                onSelect={selectResource}
-              />
-            ))}
-          </Group>
+          {groups.imports.map((group) => (
+            <Group
+              key={group.alias}
+              label={`From ${group.alias}`}
+              plain
+              count={group.kinds.length + group.resources.length}
+            >
+              {group.kinds.map((kind) => (
+                <KindRow
+                  key={kind.id}
+                  kind={kind}
+                  selected={selectedKind === kind.id}
+                  onSelect={selectKind}
+                  {...(kind.template && onOpenTemplate
+                    ? { onOpen: () => onOpenTemplate(kind.id) }
+                    : {})}
+                />
+              ))}
+              {group.resources.map((node) => (
+                <InstanceRow
+                  key={node.id}
+                  node={node}
+                  kindLabel={kindLabel(node)}
+                  icon={PackageOpen}
+                  held={heldBy.get(node.id) ?? 0}
+                  selected={picked(node)}
+                  onSelect={selectResource}
+                  title={`Ready-made instance from ${group.alias} — call it from a boot step or a sequence`}
+                />
+              ))}
+            </Group>
+          ))}
         </div>
       )}
     </div>
@@ -163,16 +190,21 @@ export function ModuleDrawer({
 function Group({
   label,
   count,
+  plain,
   children,
 }: {
   label: string;
   count: number;
+  /** An alias is written as it is — uppercasing it would rename it. */
+  plain?: boolean;
   children: React.ReactNode;
 }) {
   if (count === 0) return null;
   return (
     <>
-      <div className="mt-1 flex items-center gap-1 px-1.5 pb-0.5 pt-1 text-[9px] uppercase tracking-widest text-zinc-400">
+      <div className={`mt-1 flex items-center gap-1 px-1.5 pb-0.5 pt-1 text-[9px] tracking-widest text-zinc-400 ${
+          plain ? "" : "uppercase"
+        }`}>
         <span>{label}</span>
         <span className="ml-auto">{count}</span>
       </div>
@@ -188,12 +220,16 @@ function Group({
  */
 function InstanceRow({
   node,
+  kindLabel,
   icon: Icon,
   held,
   selected,
   onSelect,
+  title,
 }: {
   node: GraphNode;
+  kindLabel: string;
+  title?: string;
   icon: typeof Database;
   held: number;
   selected: boolean;
@@ -209,7 +245,9 @@ function InstanceRow({
         selected ? "bg-indigo-50 dark:bg-indigo-950/40" : ""
       }`}
       onClick={() => onSelect(node.kind, node.name)}
-      title={held > 0 ? `reached by ${held} resource(s)` : "nothing reaches this"}
+      title={
+        title ?? (held > 0 ? `reached by ${held} resource(s)` : "nothing reaches this")
+      }
     >
       <div className="flex w-full items-center gap-1">
         <Icon className="size-2.5 shrink-0 text-zinc-400" />
@@ -223,7 +261,7 @@ function InstanceRow({
         )}
       </div>
       <div className="flex w-full items-center gap-1 pl-3.5 text-[10px] text-zinc-400">
-        <span className="truncate">{node.unknownKind ? "unresolved kind" : node.kind}</span>
+        <span className="truncate">{node.unknownKind ? "unresolved kind" : kindLabel}</span>
         <span className="ml-auto shrink-0">{held > 0 ? `×${held}` : "—"}</span>
       </div>
     </button>

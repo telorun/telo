@@ -82,3 +82,52 @@
 .showcase-type ul { display: grid; gap: var(--telo-space-xs); margin: 0; padding: 0; list-style: none; }
 .showcase-type-face { display: inline-block; min-inline-size: 8rem; color: var(--telo-color-muted); }
 .showcase-type small { display: block; color: var(--telo-color-muted); font-style: normal; font-weight: 400; }
+
+.showcase-snippet {
+  overflow: hidden;
+  border: 1px solid var(--telo-color-border);
+  border-radius: var(--telo-radius-md);
+  color: var(--telo-color-text);
+}
+.showcase-snippet-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--telo-space-sm);
+  padding: var(--telo-space-xs) var(--telo-space-sm);
+  background: var(--telo-color-surface);
+}
+.showcase-snippet button { font: inherit; font-size: var(--telo-font-size-sm); cursor: pointer; }
+.showcase-snippet-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--telo-space-sm);
+  padding: var(--telo-space-xs);
+  border: 0;
+  background: none;
+  color: var(--telo-color-accent);
+  font-weight: 600;
+}
+.showcase-snippet-toggle:hover { opacity: 0.8; }
+.showcase-snippet-glyph { font-family: var(--telo-font-mono); }
+.showcase-snippet-chevron { display: inline-block; line-height: 1; transition: transform 120ms ease; }
+.showcase-snippet[data-open="true"] .showcase-snippet-chevron { transform: rotate(90deg); }
+.showcase-snippet-copy {
+  padding: var(--telo-space-xs) var(--telo-space-sm);
+  border: 1px solid var(--telo-color-border);
+  border-radius: var(--telo-radius-sm);
+  background: var(--telo-color-background);
+  color: inherit;
+}
+.showcase-snippet-code {
+  margin: 0;
+  padding: var(--telo-space-md);
+  overflow-x: auto;
+  border-top: 1px solid var(--telo-color-border);
+  background: var(--telo-color-background);
+  font-family: var(--telo-font-mono);
+  font-size: var(--telo-font-size-sm);
+  line-height: var(--telo-line-height-body);
+}
+.showcase-snippet-error { margin: 0; color: var(--telo-color-danger); font-size: var(--telo-font-size-sm); }

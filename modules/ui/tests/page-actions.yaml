@@ -3,16 +3,16 @@ metadata:
   name: UiPageActionsTest
   version: 1.0.0
   description: |
-    A page's data runs actions in place: a `button` node bound to the page's
-    variables and a reader's data, prompting for the required input it leaves
-    unbound — its action declared inline or one resource two buttons name by
-    reference — and a `list` node with row and cell styles — each as a renderer
-    receives it. Refused by `telo check`: a button that does not prompt leaving
-    a required input unbound, binding a key the action does not take or
-    reading a member the data does not declare, an action whose form leaves a
-    required property out whatever binds it, and a style chosen by anything but
-    a plain chain; a button's inputs that make no record of its action are
-    refused again when the reader is first read.
+    A page's data runs mutations in place: a `button` node holding a call
+    bound to the page's variables and a reader's data, asking for the entries
+    it needs through a prompt — its mutation declared inline or one resource
+    two buttons name by reference — and a `list` node with row and cell styles
+    — each as a renderer receives it. Refused by `telo check`: a call leaving
+    a required input unbound, binding a key the mutation does not take or
+    reading a member the data does not declare, a prompt whose fields leave a
+    required entry out, and a style chosen by anything but a plain chain; a
+    call's inputs that make no record of its mutation are refused again when
+    the reader is first read.
 imports: { Ui: ../, Assert: ../../assert }
 targets:
   - !ref main
@@ -72,22 +72,29 @@ children:
       - type: stack
         children:
           - type: button
-            inputs:
-              id: !cel "params.id"
-              decision: approve
-              revision: !cel "data.plan.latestRevision.seq"
-              hash: !cel "data.plan.latestRevision.hash"
-            prompt: true
             action:
-              kind: Ui.Action
-              inputModel: !ref PlanDecision
-              request:
-                target:
+              mutation:
+                kind: Ui.Mutation
+                inputModel: !ref PlanDecision
+                url:
                   path: /api/plans/{id}/decisions
                   pathParams:
                     id: !cel "input.id"
+              inputs:
+                id: !cel "params.id"
+                decision: approve
+                revision: !cel "data.plan.latestRevision.seq"
+                hash: !cel "data.plan.latestRevision.hash"
+                author: !cel "prompt.author"
               label: Approve
-              fields: [id, decision, revision, hash, author]
+              prompt:
+                kind: Ui.Prompt
+                model:
+                  kind: Telo.JsonSchema
+                  schema:
+                    type: object
+                    required: [author]
+                    properties: { author: { type: string, title: Your name } }
           - type: list
             rows: !cel "data.lines"
             rowStyle:
@@ -100,28 +107,43 @@ children:
                   cases: { context: muted }
                   default: strong
           - type: button
-            inputs:
-              id: !cel "params.id"
-              decision: request_changes
-              revision: !cel "data.plan.latestRevision.seq"
-              hash: !cel "data.plan.latestRevision.hash"
-            prompt: true
-            action: !ref decide
+            action:
+              mutation: !ref decide
+              inputs:
+                id: !cel "params.id"
+                decision: request_changes
+                revision: !cel "data.plan.latestRevision.seq"
+                hash: !cel "data.plan.latestRevision.hash"
+                author: !cel "prompt.author"
+                note: !cel "prompt.note"
+              label: Decide
+              prompt: !ref decisionPrompt
           - type: button
-            inputs:
-              id: !cel "params.id"
-              decision: reject
-              revision: !cel "data.plan.latestRevision.seq"
-              hash: !cel "data.plan.latestRevision.hash"
-            prompt: true
-            action: !ref decide
+            action:
+              mutation: !ref decide
+              inputs:
+                id: !cel "params.id"
+                decision: reject
+                revision: !cel "data.plan.latestRevision.seq"
+                hash: !cel "data.plan.latestRevision.hash"
+                author: !cel "prompt.author"
+                note: !cel "prompt.note"
+              label: Decide
+              prompt: !ref decisionPrompt
 ---
-kind: Ui.Action
+kind: Ui.Mutation
 metadata: { name: decide }
 inputModel: !ref PlanDecision
-request:
-  target: { path: "/api/plans/{id}/decisions", pathParams: { id: !cel "input.id" } }
-label: Decide
+url: { path: "/api/plans/{id}/decisions", pathParams: { id: !cel "input.id" } }
+---
+kind: Ui.Prompt
+metadata: { name: decisionPrompt }
+model:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [author]
+    properties: { author: { type: string, title: Your name }, note: { type: string, title: Note } }
 ---
 kind: Telo.Sequence
 metadata: { name: main }
@@ -135,26 +157,29 @@ steps:
       actual: !cel >-
         cel.bind(b, steps.page.result.children[0].content[0].children[0], {
           'members': sort(keys(b)),
-          'inputs': b.inputs,
-          'prompted': b.prompt.fields.map(f, f.property),
+          'callMembers': sort(keys(b.action)),
+          'inputs': b.action.inputs,
+          'prompted': b.action.prompt.fields.map(f, f.property),
           'button': b.button,
-          'action': [b.action.type, b.action.label]
+          'label': b.action.label
         })
       expected:
-        members: [action, button, fill, inputs, prompt, type]
+        members: [action, button, fill, type]
+        callMembers: [failure, inputs, label, mutation, onSuccess, prompt]
         inputs:
           id: { root: params, path: [id] }
           decision: { value: approve }
           revision: { root: data, path: [plan, latestRevision, seq] }
           hash: { root: data, path: [plan, latestRevision, hash] }
+          author: { root: prompt, path: [author] }
         prompted: [author]
         button: { type: text }
-        action: [action, { text: Approve, context: null, lang: und, computed: false }]
+        label: { text: Approve, context: null, lang: und, computed: false }
   - name: referencedActionIs
     invoke: { kind: Assert.Equals }
     inputs:
       actual: !cel >-
-        steps.page.result.children[0].content[0].children.filter(c, c.type == 'button').map(b, [b.inputs.decision, b.action.label.text, b.prompt.fields.map(f, f.property)])
+        steps.page.result.children[0].content[0].children.filter(c, c.type == 'button').map(b, [b.action.inputs.decision, b.action.label.text, b.action.prompt.fields.map(f, f.property)])
       expected:
         - [{ value: approve }, Approve, [author]]
         - [{ value: request_changes }, Decide, [author, note]]
@@ -177,11 +202,11 @@ source: ./__fixtures__/invalid/page-actions/lib/telo.yaml
 expect:
   errors:
     - code: CONTRACT_INPUTS_MISMATCH
-      message: "Ui.View/authorUnprompted: inputs at 'content.content[0].inputs' do not satisfy decide's declared inputType: / is missing required property 'author'"
+      message: "Ui.View/authorUnprompted: inputs at 'content.content[0].action.inputs' do not satisfy decide's declared inputType: / is missing required property 'author'"
     - code: CONTRACT_INPUTS_MISMATCH
-      message: "Ui.View/hashMisspelled: inputs at 'content.content[0].inputs' do not satisfy decide's declared inputType: / must NOT have additional properties ('hsh' is not allowed)"
+      message: "Ui.View/hashMisspelled: inputs at 'content.content[0].action.inputs' do not satisfy decide's declared inputType: / must NOT have additional properties ('hsh' is not allowed)"
     - code: RESOURCE_RULE_VIOLATED
-      message: "Ui.Action/commentIncomplete: leaves a property the input model requires with no field"
+      message: "Ui.Prompt/commentIncomplete: leaves a property the model requires with no field"
     - code: CEL_UNKNOWN_FIELD
       message: "Ui.View/revisionTypo: !cel: 'data.plan.latestRevison' is not defined (available: id, title, latestRevision)"
 ---
@@ -199,5 +224,5 @@ kind: Assert.Manifest
 metadata: { name: buttonInputsAtRuntime }
 source: ./__fixtures__/invalid/page-actions/telo.yaml
 expect:
-  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Ui.Action/commentIncomplete: leaves a property the input model requires with no field, so a valid record could never be sent. List a field for every required property, or leave `fields` out where each one is a scalar or a list of scalars." }, { code: CONTRACT_INPUTS_MISMATCH, message: "Ui.View/authorUnprompted: inputs at 'content.content[0].inputs' do not satisfy decide's declared inputType: / is missing required property 'author'" }, { code: CONTRACT_INPUTS_MISMATCH, message: "Ui.View/hashMisspelled: inputs at 'content.content[0].inputs' do not satisfy decide's declared inputType: / must NOT have additional properties ('hsh' is not allowed)" }, { code: CEL_UNKNOWN_FIELD, message: "Ui.View/revisionTypo: !cel: 'data.plan.latestRevison' is not defined (available: id, title, latestRevision)" }]
-  runFails: "Ui.View 'authorUnprompted' content.content[0]: 'inputs' cannot make a record of the action's input model: required input 'author' is not bound."
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Ui.Prompt/commentIncomplete: leaves a property the model requires with no field, so a valid record could never be sent. List a field for every required property, or leave `fields` out where each one is a scalar or a list of scalars." }, { code: CONTRACT_INPUTS_MISMATCH, message: "Ui.View/authorUnprompted: inputs at 'content.content[0].action.inputs' do not satisfy decide's declared inputType: / is missing required property 'author'" }, { code: CONTRACT_INPUTS_MISMATCH, message: "Ui.View/hashMisspelled: inputs at 'content.content[0].action.inputs' do not satisfy decide's declared inputType: / must NOT have additional properties ('hsh' is not allowed)" }, { code: CEL_UNKNOWN_FIELD, message: "Ui.View/revisionTypo: !cel: 'data.plan.latestRevison' is not defined (available: id, title, latestRevision)" }]
+  runFails: "Ui.View 'authorUnprompted' content.content[0]: 'action.inputs' cannot make a record of the mutation's input model: required input 'author' is not bound."

@@ -8,7 +8,7 @@ import { resolveNode, type AuthoredNode } from "./node-resolution.js";
 import { readPlan } from "./read-plan.js";
 import { NOTHING } from "./request-failure.js";
 import type { Binding } from "./row-binding.js";
-import { pendingBoundAction, providedBoundActions, type BoundActionConfig } from "./bound-actions.js";
+import { pendingMutationCall, providedMutationCalls, type MutationCallConfig } from "./mutation-calls.js";
 import { filledNode } from "./fill-marking.js";
 
 /** What a layout draws, `reads` aside, and the files a browser loads for it. */
@@ -56,15 +56,15 @@ async function recordContent(written: AuthoredNode | null | undefined, inputs: L
   return { node: filledNode(resolved?.node ?? NOTHING), assets: resolved?.assets ?? [] };
 }
 
-/** A move as a renderer receives it, its action provided; nothing when none is declared. */
-async function recordMove(move: BoundActionConfig | null | undefined, ctx: ResourceContext, owner: string) {
+/** A move as a renderer receives it, its mutation provided; nothing when none is declared. */
+async function recordMove(move: MutationCallConfig | null | undefined, ctx: ResourceContext, owner: string) {
   if (move == null) return { assets: [] as AssetFile[][] };
-  const { entries, assets } = await providedBoundActions([pendingBoundAction(move, ctx, owner, "move")]);
+  const { entries, assets } = await providedMutationCalls([pendingMutationCall(move, ctx, owner, "move", "move")]);
   return { move: entries[0], assets };
 }
 
 type ContentResource = RuntimeResource & { content?: AuthoredNode | null };
-type MovingResource = ContentResource & { move?: BoundActionConfig | null };
+type MovingResource = ContentResource & { move?: MutationCallConfig | null };
 
 /** `content` and `move`, as every layout drawing records with them carries them. */
 async function drawnRecords(type: string, resource: MovingResource, inputs: LayoutInputs, ctx: ResourceContext, owner: string, own: Record<string, unknown> = {}): Promise<Drawn> {
@@ -112,7 +112,7 @@ export const TreeLayoutController = layoutController<MovingResource & { parent: 
 );
 
 type ComponentLayoutResource = RuntimeResource &
-  ReadKeys & { component: unknown; props?: Record<string, Binding> | null; move?: BoundActionConfig | null };
+  ReadKeys & { component: unknown; props?: Record<string, Binding> | null; move?: MutationCallConfig | null };
 
 export const ComponentLayoutController = layoutController<ComponentLayoutResource>(
   "ComponentLayout",

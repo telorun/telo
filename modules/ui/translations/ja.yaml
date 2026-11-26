@@ -7,6 +7,8 @@ messages:
   noRows: 行がありません。
   nothingFound: 見つかりませんでした。
   save: 保存
+  saving: 保存中…
+  retry: もう一度試す
   cancel: キャンセル
   close: 閉じる
   newRecord: 新規

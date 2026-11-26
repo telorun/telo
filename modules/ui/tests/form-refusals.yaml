@@ -1,0 +1,123 @@
+kind: Telo.Application
+metadata:
+  name: UiFormRefusalsTest
+  version: 1.0.0
+  description: |
+    What a form refuses of the writes it runs and of what follows them — a
+    `record` beside `onSubmit` or `autosave`, a key a write's closed shape does
+    not list, `onSuccess` or `afterSubmit` with no submit write, inputs the
+    mutation does not take, an autosave over a mutation that creates, an
+    answer read as a member it does not declare, an effect that is no effect,
+    a property no control can enter without a collection — and what a query
+    or a listing refuses of the form it names and the `form` it reads;
+    statically, and for the controller's own twins again when first read. The
+    removed `Ui.Action` is an unknown kind.
+imports: { Assert: ../../assert, Probe: ./__fixtures__/probe }
+targets:
+  - !ref forms
+  - !ref submitFieldUnknownAtRuntime
+  - !ref submitFieldUnsupportedAtRuntime
+  - !ref submitRequiredNotEnteredAtRuntime
+  - !ref submitClearUnknownAtRuntime
+  - !ref autosaveWritten
+  - !ref autosaveWrittenAtRuntime
+  - !ref autosaveSuppliedAtRuntime
+  - !ref recordWithWriteAtRuntime
+  - !ref effectsWithoutWriteAtRuntime
+---
+kind: Assert.Manifest
+metadata: { name: forms }
+source: ./__fixtures__/invalid/forms/telo.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "Ui.Form/recordWithSubmit: / matches a shape that is not allowed here" }
+    - { code: SCHEMA_VIOLATION, message: "Ui.Form/recordWithAutosave: / matches a shape that is not allowed here" }
+    - { code: SCHEMA_VIOLATION, message: "Ui.Form/promptUnderSubmit: /onSubmit must NOT have additional properties ('prompt' is not allowed)" }
+    - { code: SCHEMA_VIOLATION, message: "Ui.Form/effectsUnderSubmit: /onSubmit must NOT have additional properties ('onSuccess' is not allowed)" }
+    - { code: SCHEMA_VIOLATION, message: "Ui.Form/confirmUnderAutosave: /autosave must NOT have additional properties ('confirm' is not allowed)" }
+    - { code: SCHEMA_VIOLATION, message: "Ui.Form/labelUnderAutosave: /autosave must NOT have additional properties ('label' is not allowed)" }
+    - { code: SCHEMA_VIOLATION, message: "Ui.Form/effectsWithoutWrite: / must match \"then\" schema" }
+    - { code: SCHEMA_VIOLATION, message: "Ui.Form/afterSubmitWithoutWrite: / must match \"then\" schema" }
+    - { code: SCHEMA_VIOLATION, message: "Ui.Form/inputsAbsent: /onSubmit is missing required property 'inputs'" }
+    - { code: SCHEMA_VIOLATION, message: "Ui.Form/autosaveInputsAbsent: /autosave is missing required property 'inputs'" }
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "Ui.Form/inputNotTaken: inputs at 'autosave.inputs' do not satisfy put's declared inputType: / must NOT have additional properties ('slug' is not allowed)" }
+    - { code: CEL_UNKNOWN_FIELD, message: "Ui.Form/valuesTypo: !cel: 'values.titel' is not defined (available: title, body)" }
+    - { code: RESOURCE_RULE_VIOLATED, message: "Ui.Form/autosaveCreates: autosaves over a mutation whose method is `POST`" }
+    - { code: RESOURCE_RULE_VIOLATED, message: "Ui.Form/clearUnknown at 'clearAnswerOn[1]': clears its answers on a property the model does not declare" }
+    - { code: RESOURCE_RULE_VIOLATED, message: "Ui.Form/bareObject at 'fields[0]': lists a property no control can enter" }
+    - { code: CEL_UNKNOWN_FIELD, message: "Ui.Form/resultTypo: !cel: 'result.titel' is not defined (available: id, name)" }
+    - { code: REFERENCE_KIND_MISMATCH, message: "Ui.Form/effectNotAnEffect: reference at 'onSuccess[0]' → 'Ui.Dialog' does not implement 'Ui.Effect'" }
+    - { code: CEL_UNKNOWN_FIELD, message: "Ui.Form/answerTypo: !cel: 'result.titel' is not defined (available: kind, files, id)" }
+    - { code: UNDEFINED_KIND, message: "No Telo.Definition found for kind 'Ui.Action'" }
+    - { code: CEL_UNKNOWN_IDENTIFIER, message: "Ui.Query/formless: !cel: 'form' is not available here: the query names no form in `form`." }
+    - { code: CEL_UNKNOWN_FIELD, message: "Ui.Query/typoField: !cel: 'form.perod' is not defined (available: period, team)" }
+    - { code: REFERENCE_KIND_MISMATCH, message: "Ui.Query/wrongKind: reference at 'form' → 'Telo.JsonSchema'" }
+    - { code: REFERENCE_KIND_MISMATCH, message: "Ui.Listing/listingWrongKind: reference at 'form' → 'Telo.JsonSchema'" }
+    - { code: CEL_UNKNOWN_IDENTIFIER, message: "Ui.Listing/listingFormless: !cel: 'form' is not available here: the listing names no form in `form`." }
+    - { code: CEL_UNKNOWN_IDENTIFIER, message: "Ui.View/nestedFormless: !cel: 'form' is not available here: the query names no form in `form`." }
+---
+kind: Assert.Manifest
+metadata: { name: submitFieldUnknownAtRuntime }
+source: ./__fixtures__/invalid/submit-field-unknown/telo.yaml
+expect:
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Ui.Form/submitFieldUnknown at 'fields[1]': lists a field for a property the model does not declare" }]
+  runFails: "Ui.Form 'submitFieldUnknown': 'fields[1]' lists a field for a property the model does not declare ('year')"
+---
+kind: Assert.Manifest
+metadata: { name: submitFieldUnsupportedAtRuntime }
+source: ./__fixtures__/invalid/submit-field-unsupported/telo.yaml
+expect:
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Ui.Form/submitFieldUnsupported at 'fields[1]': lists a property no control can enter" }]
+  runFails: "Ui.Form 'submitFieldUnsupported': 'fields[1]' lists a property no control can enter ('options')"
+---
+kind: Assert.Manifest
+metadata: { name: submitRequiredNotEnteredAtRuntime }
+source: ./__fixtures__/invalid/submit-required-not-entered/telo.yaml
+expect:
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Ui.Form/submitRequiredNotEntered: leaves a property the model requires with no field" }]
+  runFails: "Ui.Form 'submitRequiredNotEntered': leaves a property the model requires with no field ('month')"
+---
+kind: Assert.Manifest
+metadata: { name: submitClearUnknownAtRuntime }
+source: ./__fixtures__/invalid/submit-clear-unknown/telo.yaml
+expect:
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Ui.Form/submitClearUnknown at 'clearAnswerOn[1]': clears its answers on a property the model does not declare" }]
+  runFails: "Ui.Form 'submitClearUnknown': 'clearAnswerOn[1]' clears its answers on a property the model does not declare ('total'), which never changes."
+---
+# A library's own finding, refused where it is declared.
+kind: Assert.Manifest
+metadata: { name: autosaveWritten }
+source: ./__fixtures__/invalid/autosave-idempotent/lib/telo.yaml
+expect:
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Ui.Form/written: autosaves over a mutation whose method is `POST`" }]
+---
+# From a consumer whose check reports that finding, the kernel stops at start.
+kind: Assert.Manifest
+metadata: { name: autosaveWrittenAtRuntime }
+source: ./__fixtures__/invalid/autosave-idempotent/telo.yaml
+expect:
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "Ui.Form/written: autosaves over a mutation whose method is `POST`" }]
+  runFails: "Ui.Form 'written': 'autosave' runs a mutation whose method is 'POST'"
+---
+# A mutation the importer supplies is judged only when the form is created.
+kind: Assert.Manifest
+metadata: { name: autosaveSuppliedAtRuntime }
+source: ./__fixtures__/invalid/autosave-idempotent/via-input/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Form 'supplied': 'autosave' runs a mutation whose method is 'POST'"
+---
+# A schema refusal is the kernel's too.
+kind: Assert.Manifest
+metadata: { name: recordWithWriteAtRuntime }
+source: ./__fixtures__/invalid/form-record-with-write/telo.yaml
+expect:
+  errors: [{ code: SCHEMA_VIOLATION, message: "Ui.Form/both: / matches a shape that is not allowed here" }]
+  runFails: "[SCHEMA_VIOLATION] Ui.Form/both: / matches a shape that is not allowed here"
+---
+kind: Assert.Manifest
+metadata: { name: effectsWithoutWriteAtRuntime }
+source: ./__fixtures__/invalid/form-effects-without-write/telo.yaml
+expect:
+  errors: [{ code: SCHEMA_VIOLATION, message: "Ui.Form/unwritten: / must match \"then\" schema" }]
+  runFails: "[SCHEMA_VIOLATION] Ui.Form/unwritten: / must match \"then\" schema"

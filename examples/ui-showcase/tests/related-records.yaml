@@ -63,10 +63,10 @@ steps:
         column: !cel "steps.nodes.result[2].content.layout.columns.filter(c, c.value.path[0] == 'authorId').map(c, c.relation)"
         barField: !cel "steps.nodes.result[2].fields.filter(f, f.property == 'authorId').map(f, [f.operator, f.values, f.options == steps.nodes.result[2].content.relations.authorId])"
         picker: !cel "steps.newPost.result.body.children[0].fields.filter(f, f.property == 'authorId').map(f, [f.type, f.options == steps.nodes.result[2].content.relations.authorId])"
-        layouts: !cel "[2, 5, 9, 12, 18].map(i, cel.bind(l, i == 2 || i == 5 ? steps.nodes.result[i].content : steps.nodes.result[i], [l.basePath, l.layout.type]))"
+        layouts: !cel "[2, 6, 11, 15, 23].map(i, cel.bind(l, i == 2 || i == 6 ? steps.nodes.result[i].content : steps.nodes.result[i], [l.basePath, l.layout.type]))"
       expected:
         title: { lang: en, message: [Related records] }
-        kinds: [text, text, filters, text, text, filters, text, text, text, listing, text, text, listing, text, text, filters, text, text, listing, text, text, menu, listing]
+        kinds: [text, text, filters, component, text, text, filters, component, text, text, text, listing, component, text, text, listing, component, text, text, filters, component, text, text, listing, component, text, text, stack, component]
         relation:
           type: collection
           schema:
@@ -101,12 +101,12 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        present: !cel "steps.nodes.result[5].fields.map(f, [f.property, f.values])"
-        cards: !cel "cel.bind(l, steps.nodes.result[5].content, [l.paging, l.layout.size, l.compact.type, l.layout.reads])"
-        board: !cel "cel.bind(l, steps.nodes.result[9].layout, [l.reads.groups.property, l.reads.groups.values, l.reads.groups.enum, l.move.action.request.target.path.value, l.move.inputs])"
-        calendar: !cel "cel.bind(l, steps.nodes.result[12].layout, [l.period, l.reads.span])"
-        authors: !cel "[steps.nodes.result[15].content.basePath, steps.nodes.result[15].content.layout.type]"
-        tree: !cel "cel.bind(l, steps.nodes.result[18], [l.layout.reads.parent, l.relations.managerId.basePath, steps.newEmployee.result.body.children[0].fields.filter(f, f.property == 'managerId').map(f, f.type)])"
+        present: !cel "steps.nodes.result[6].fields.map(f, [f.property, f.values])"
+        cards: !cel "cel.bind(l, steps.nodes.result[6].content, [l.paging, l.layout.size, l.compact.type, l.layout.reads])"
+        board: !cel "cel.bind(l, steps.nodes.result[11].layout, [l.reads.groups.property, l.reads.groups.values, l.reads.groups.enum, l.move.mutation.url.path.value, l.move.inputs])"
+        calendar: !cel "cel.bind(l, steps.nodes.result[15].layout, [l.period, l.reads.span])"
+        authors: !cel "[steps.nodes.result[19].content.basePath, steps.nodes.result[19].content.layout.type]"
+        tree: !cel "cel.bind(l, steps.nodes.result[23], [l.layout.reads.parent, l.relations.managerId.basePath, steps.newEmployee.result.body.children[0].fields.filter(f, f.property == 'managerId').map(f, f.type)])"
       expected:
         present: [[authorId, present], [status, present]]
         cards: [scroll, small, list, {}]

@@ -23,7 +23,7 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "k8s-runner.labels" . | nindent 8 }}
+        {{- include "k8s-runner.releaseLabels" . | nindent 8 }}
         app.kubernetes.io/name: {{ $relay }}
         app.kubernetes.io/component: relay
     spec:

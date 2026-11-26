@@ -1,6 +1,7 @@
 import { useHost } from "@telorun/ui-react";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { parseAllDocuments, visit, type Node } from "yaml";
 import "./components.css";
 
 /**
@@ -419,6 +420,131 @@ export function TypefaceSamples() {
           </ul>
         </section>
       ))}
+    </div>
+  );
+}
+
+/** The files already asked for, by the URL they were asked at. */
+const sources = new Map<string, Promise<string>>();
+
+function readSource(host: ReturnType<typeof useHost>, url: string): Promise<string> {
+  const held = sources.get(url);
+  if (held !== undefined) return held;
+  const read = host.fetch(url).then(async (response) => {
+    if (!response.ok) throw new Error(`the server answered ${response.status}`);
+    return response.text();
+  });
+  sources.set(url, read);
+  // A failed read is asked again by the next snippet, not remembered.
+  read.catch(() => sources.delete(url));
+  return read;
+}
+
+/**
+ * The text of the node a file anchors, exactly as written — tags, comments and
+ * flow style kept — whole lines where the node starts a line, dedented, with
+ * no `&anchor` token.
+ */
+function cutAnchored(source: string, anchor: string): string | undefined {
+  for (const document of parseAllDocuments(source)) {
+    let found: Node | undefined;
+    visit(document, {
+      Node(_key, node) {
+        if (node.anchor === anchor) {
+          found = node;
+          return visit.BREAK;
+        }
+      },
+    });
+    if (found?.range == null) continue;
+    const [start, valueEnd] = found.range;
+    let end = valueEnd;
+    while (end > start && /\s/.test(source[end - 1])) end--;
+    const lineStart = source.lastIndexOf("\n", start - 1) + 1;
+    const indent = source.slice(lineStart).search(/\S/);
+    const from = source.slice(lineStart, start).trim() === "" ? lineStart : start;
+    const lineEnd = source.indexOf("\n", end);
+    const text = source.slice(from, lineEnd === -1 ? source.length : lineEnd);
+    return text
+      .split("\n")
+      .map((line, index) => (index === 0 && from === start ? line : line.slice(Math.min(indent, line.length - line.trimStart().length))))
+      .join("\n")
+      .trimEnd();
+  }
+  return undefined;
+}
+
+type Snippet = { status: "loading" } | { status: "ready"; text: string } | { status: "failed"; reason: string };
+
+/**
+ * The YAML that builds a section of a page, cut from the page file the
+ * application serves under `source/` at the node the file anchors.
+ */
+export function SourceSnippet({ file, anchor }: { file: string; anchor: string }) {
+  const host = useHost();
+  const url = host.href(`/source/${file}`);
+  const [snippet, setSnippet] = useState<Snippet>({ status: "loading" });
+  const [open, setOpen] = useState(false);
+  const [copy, setCopy] = useState<"idle" | "copied" | { failed: string }>("idle");
+
+  useEffect(() => {
+    let current = true;
+    setSnippet({ status: "loading" });
+    readSource(host, url).then(
+      (source) => {
+        if (!current) return;
+        const text = cutAnchored(source, anchor);
+        setSnippet(text === undefined ? { status: "failed", reason: "the file holds no such anchor" } : { status: "ready", text });
+      },
+      (error: unknown) => current && setSnippet({ status: "failed", reason: error instanceof Error ? error.message : String(error) }),
+    );
+    return () => {
+      current = false;
+    };
+  }, [url, anchor]);
+
+  if (snippet.status === "failed") {
+    return (
+      <p className="showcase-snippet-error" role="alert">
+        Source snippet unavailable: file {file}, anchor {anchor} — {snippet.reason}.
+      </p>
+    );
+  }
+  if (snippet.status === "loading") return null;
+
+  const copyText = () =>
+    navigator.clipboard.writeText(snippet.text).then(
+      () => {
+        setCopy("copied");
+        setTimeout(() => setCopy("idle"), 2000);
+      },
+      (error: unknown) => setCopy({ failed: String(error) }),
+    );
+
+  return (
+    <div className="showcase-snippet" data-open={open}>
+      <div className="showcase-snippet-bar">
+        <button type="button" className="showcase-snippet-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+          <span className="showcase-snippet-glyph" aria-hidden="true">
+            {"</>"}
+          </span>
+          {open ? "Hide source" : "Show source"}
+          <span className="showcase-snippet-chevron" aria-hidden="true">
+            ›
+          </span>
+        </button>
+        {open && (
+          <button type="button" className="showcase-snippet-copy" onClick={() => void copyText()}>
+            {copy === "copied" ? "Copied" : "Copy"}
+          </button>
+        )}
+        {typeof copy === "object" && <span className="showcase-snippet-error">Copy failed: {copy.failed}</span>}
+      </div>
+      {open && (
+        <pre className="showcase-snippet-code">
+          <code>{snippet.text}</code>
+        </pre>
+      )}
     </div>
   );
 }

@@ -111,6 +111,8 @@ export interface RunRecord {
   portRoutes: Map<number, { state: RunRouteState; host: string; app?: string; reason?: string }>;
   /** Latest generation outcome of the app, keyed by app name. */
   runs: Record<string, RunOutcomeEvent>;
+  /** When each app's latest `runs` event arrived here, by app name. */
+  outcomeAt: Record<string, number>;
   /** The telo version the app's set entry named; absent when the runner does
    *  not choose one per application. */
   requestedTelo?: string;
@@ -288,6 +290,7 @@ function newRecord(fields: { appPath: string; app: string; runnerName: string; s
     portReachability: new Map(),
     portRoutes: new Map(),
     runs: {},
+    outcomeAt: {},
     ...(fields.requestedTelo !== undefined ? { requestedTelo: fields.requestedTelo } : {}),
     reportedTelo: {},
     unroutablePorts: new Map(),
@@ -457,7 +460,10 @@ export function RunProvider({ children }: { children: ReactNode }) {
           // behind it; only one still running gets a terminal.
           setTimeout(() => {
             const current = (runsRef.current.get(appPath) ?? []).find((r) => r.id === adopted.id);
-            if (current && current.status.kind === "running") attachTerminal(current);
+            // A replay after a resume can name runs of a session that is not up yet.
+            if (current && current.status.kind === "running" && controllerRef.current?.state.status?.kind === "running") {
+              attachTerminal(current);
+            }
           }, ADOPTED_TERMINAL_DELAY_MS);
           return;
         }
@@ -524,6 +530,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
           updateRecord(record.id, (r) => ({
             ...r,
             runs: { ...r.runs, [event.app]: event },
+            outcomeAt: { ...r.outcomeAt, [event.app]: Date.now() },
             ...(event.phase === "started"
               ? { reportedTelo: reportedAfter(r.reportedTelo, event.app, event.telo) }
               : {}),

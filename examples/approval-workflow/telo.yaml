@@ -386,28 +386,6 @@ kind: Telo.JsonSchema
 metadata: { name: Delivered }
 schema: { type: object, required: [delivered], properties: { delivered: { type: boolean } } }
 ---
-# Submitting starts the run and moves to its page.
-kind: Ui.Action
-metadata: { name: submitExpenseAction }
-inputModel: !ref NewExpense
-outputModel: !ref Submitted
-request: { target: /api/expenses }
-label: Submit expense
-onSuccess: { to: { kind: Ui.Navigate, href: { path: /expense, queryParams: { run: !cel "result.runId" } } } }
----
-# The approval, offered on the run's row only while it is parked on the wait.
-kind: Ui.Action
-metadata: { name: approveAction }
-inputModel: !ref Approval
-outputModel: !ref Delivered
-request: { target: /api/approvals }
-label: Approve
-result:
-  type: stack
-  children:
-    - { type: text, text: Approved. The run continues and pays., style: success, shown: { at: !cel "result.delivered", matches: { const: true } } }
-    - { type: text, text: Nobody is waiting on this expense any more., style: warning, shown: { at: !cel "result.delivered", matches: { const: false } } }
----
 kind: Ui.Page
 metadata: { name: submitPage }
 path: /
@@ -416,7 +394,21 @@ width: contained
 children:
   - { type: text, text: Submit an expense, style: title }
   - { type: text, text: "Under the threshold it is paid at once; above it the run waits for a manager.", style: muted }
-  - { type: composite, ref: !ref submitExpenseAction }
+  # Submitting starts the run and moves to its page.
+  - type: composite
+    ref:
+      kind: Ui.Form
+      model: !ref NewExpense
+      onSubmit:
+        mutation:
+          kind: Ui.Mutation
+          inputModel: !ref NewExpense
+          outputModel: !ref Submitted
+          url: /api/expenses
+        inputs: { employee: !cel "values.employee", amountCents: !cel "values.amountCents", reason: !cel "values.reason" }
+        label: Submit expense
+      onSuccess:
+        - { kind: Ui.Navigate, href: { path: /expense, queryParams: { run: !cel "result.runId" } } }
 ---
 kind: Ui.Page
 metadata: { name: expensePage }
@@ -441,10 +433,29 @@ children:
           - header: Status
             value: !cel "row.status"
         rowActions:
-          - action: !ref approveAction
-            inputs:
-              token: !cel "row.token"
-            prompt: true
+          # Offered on the run's row only while it is parked on the wait.
+          - mutation:
+              kind: Ui.Mutation
+              inputModel: !ref Approval
+              outputModel: !ref Delivered
+              url: /api/approvals
+            inputs: { token: !cel "row.token", approvedBy: !cel "prompt.approvedBy", note: !cel "prompt.note" }
+            label: Approve
+            prompt:
+              kind: Ui.Prompt
+              model:
+                kind: Telo.JsonSchema
+                schema:
+                  type: object
+                  required: [approvedBy]
+                  properties:
+                    approvedBy: { type: string, title: Approved by }
+                    note: { type: string, title: Note }
+            result:
+              type: stack
+              children:
+                - { type: text, text: Approved. The run continues and pays., style: success, shown: { at: !cel "result.delivered", matches: { const: true } } }
+                - { type: text, text: Nobody is waiting on this expense any more., style: warning, shown: { at: !cel "result.delivered", matches: { const: false } } }
             enabled:
               at: !cel "row.status"
               matches: { const: parked }

@@ -5,17 +5,19 @@
 #![cfg(unix)]
 
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::{Shutdown, TcpListener};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
+use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
 use telo_runner_supervisor::protocol::{
-    decode_output_frame, encode_output_frame, parse_runner_message, OutputStream, SupervisorMessage,
+    close_code, decode_output_frame, encode_output_frame, parse_port_forward_query, parse_runner_message,
+    OutputStream, SupervisorMessage,
 };
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -78,6 +80,20 @@ fn output_frames() {
     for case in set["invalid"].as_array().unwrap() {
         let frame = from_hex(case["frameHex"].as_str().unwrap());
         assert!(decode_output_frame(&frame).is_err(), "{}: decoded", case["name"]);
+    }
+}
+
+#[test]
+fn port_forward_queries() {
+    let set = vectors("messages.json");
+    for case in set["portForward"]["valid"].as_array().unwrap() {
+        let port = parse_port_forward_query(case["query"].as_str())
+            .unwrap_or_else(|error| panic!("{}: refused: {error}", case["name"]));
+        assert_eq!(u64::from(port), case["port"].as_u64().unwrap(), "{}", case["name"]);
+    }
+    for case in set["portForward"]["invalid"].as_array().unwrap() {
+        assert!(parse_port_forward_query(case["query"].as_str()).is_err(), "{}: accepted", case["name"]);
+        assert_eq!(case["close"].as_u64(), Some(u64::from(close_code::PROTOCOL_ERROR)), "{}", case["name"]);
     }
 }
 
@@ -169,13 +185,89 @@ type Socket = WebSocketStream<TcpStream>;
 enum Received {
     Text(Value),
     Frame(u32, OutputStream, Vec<u8>),
+    /// A port forward's binary frame: raw bytes.
+    Bytes(Vec<u8>),
     Closed(Option<u16>),
 }
 
 struct Connection {
     socket: Option<Socket>,
+    /// A port forward, whose binary frames are raw bytes.
+    raw: bool,
     output: HashMap<&'static str, Vec<(u32, Vec<u8>)>>,
     last_frame_seq: Option<u32>,
+}
+
+/// A loopback listener an exchange forwards to (`listen`).
+struct Listener {
+    /// Connections accepted, and those still open.
+    accepted: Arc<AtomicUsize>,
+    open: Arc<AtomicUsize>,
+    /// A flood listener wrote every byte it was told to.
+    finished: Arc<AtomicBool>,
+}
+
+/// The flood pattern: byte `i` is `i % 251`.
+fn flood_byte(offset: usize) -> u8 {
+    (offset % 251) as u8
+}
+
+fn start_listener(serve: &Value) -> (u16, Listener) {
+    let socket = TcpListener::bind("127.0.0.1:0").expect("a loopback listener binds");
+    let port = socket.local_addr().unwrap().port();
+    let listener = Listener {
+        accepted: Arc::new(AtomicUsize::new(0)),
+        open: Arc::new(AtomicUsize::new(0)),
+        finished: Arc::new(AtomicBool::new(false)),
+    };
+    let flood = serve["flood"].as_u64().map(|n| n as usize);
+    if flood.is_none() && serve.as_str() != Some("echo") {
+        panic!("a listener serves \"echo\" or {{ \"flood\": <bytes> }}, got {serve}");
+    }
+    let (accepted, open, finished) =
+        (Arc::clone(&listener.accepted), Arc::clone(&listener.open), Arc::clone(&listener.finished));
+    std::thread::spawn(move || {
+        for stream in socket.incoming() {
+            let Ok(mut stream) = stream else { return };
+            accepted.fetch_add(1, Ordering::AcqRel);
+            open.fetch_add(1, Ordering::AcqRel);
+            let (open, finished) = (Arc::clone(&open), Arc::clone(&finished));
+            std::thread::spawn(move || {
+                match flood {
+                    Some(total) => {
+                        let mut written = 0;
+                        while written < total {
+                            let n = (64 * 1024).min(total - written);
+                            let part: Vec<u8> = (written..written + n).map(flood_byte).collect();
+                            if stream.write_all(&part).is_err() {
+                                break;
+                            }
+                            written += n;
+                        }
+                        if written == total {
+                            finished.store(true, Ordering::Release);
+                        }
+                        let _ = stream.shutdown(Shutdown::Both);
+                    }
+                    None => {
+                        let mut buffer = [0u8; 16 * 1024];
+                        loop {
+                            match stream.read(&mut buffer) {
+                                Ok(0) | Err(_) => break,
+                                Ok(n) => {
+                                    if stream.write_all(&buffer[..n]).is_err() {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                open.fetch_sub(1, Ordering::AcqRel);
+            });
+        }
+    });
+    (port, listener)
 }
 
 impl Connection {
@@ -200,6 +292,7 @@ impl Connection {
                     let value = serde_json::from_str(&text).map_err(|error| format!("not JSON: {error}"))?;
                     return Ok(Received::Text(value));
                 }
+                Some(Ok(Message::Binary(bytes))) if self.raw => return Ok(Received::Bytes(bytes.to_vec())),
                 Some(Ok(Message::Binary(bytes))) => {
                     let (seq, stream, payload) =
                         decode_output_frame(&bytes).map_err(|error| format!("bad frame: {error}"))?;
@@ -224,15 +317,47 @@ impl Connection {
 async fn run_exchange(supervisor: &mut RunningSupervisor, steps: &[Value]) -> Result<(), String> {
     let mut connections: HashMap<String, Connection> = HashMap::new();
     let mut recorded: HashMap<String, u32> = HashMap::new();
+    let mut listeners: HashMap<String, Listener> = HashMap::new();
     for (index, step) in steps.iter().enumerate() {
         let on = step["on"].as_str().unwrap_or("main").to_string();
         let within = step["withinMs"].as_u64().map(Duration::from_millis).unwrap_or(DEFAULT_WITHIN);
         let fail = |message: String| format!("step {index} ({step}): {message}");
+        if let Some(label) = step["listen"].as_str() {
+            let (port, listener) = start_listener(&step["serve"]);
+            recorded.insert(label.to_string(), u32::from(port));
+            listeners.insert(label.to_string(), listener);
+            continue;
+        }
+        if let Some(label) = step["freePort"].as_str() {
+            let port = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+            recorded.insert(label.to_string(), u32::from(port));
+            continue;
+        }
+        if let Some(label) = step["expectListenerClosed"].as_str() {
+            let listener = listeners.get(label).ok_or_else(|| fail(format!("no listener {label}")))?;
+            let deadline = Instant::now() + within;
+            while listener.accepted.load(Ordering::Acquire) == 0 || listener.open.load(Ordering::Acquire) > 0 {
+                if Instant::now() > deadline {
+                    return Err(fail("the listener's connections are still open".into()));
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            continue;
+        }
         if let Some(name) = step["connect"].as_str() {
-            let socket = connect(&supervisor.address, step["token"].as_str().unwrap()).await.map_err(fail)?;
+            let path = match step["forward"].as_str() {
+                Some(query) => format!("/v1/port-forward?{}", substitute_text(query, &recorded)),
+                None => "/v1/supervisor".to_string(),
+            };
+            let socket = connect(&supervisor.address, &path, step["token"].as_str().unwrap()).await.map_err(fail)?;
             connections.insert(
                 name.to_string(),
-                Connection { socket: Some(socket), output: HashMap::new(), last_frame_seq: None },
+                Connection {
+                    socket: Some(socket),
+                    raw: step["forward"].is_string(),
+                    output: HashMap::new(),
+                    last_frame_seq: None,
+                },
             );
             continue;
         }
@@ -280,8 +405,19 @@ async fn run_exchange(supervisor: &mut RunningSupervisor, steps: &[Value]) -> Re
             send(connection, Message::Text(text.into())).await.map_err(fail)?;
         } else if let Some(text) = step["sendText"].as_str() {
             send(connection, Message::Text(text.to_string().into())).await.map_err(fail)?;
-        } else if let Some(text) = step["sendStdin"].as_str() {
+        } else if let Some(text) = step["sendStdin"].as_str().or(step["sendBytes"].as_str()) {
             send(connection, Message::Binary(text.as_bytes().to_vec().into())).await.map_err(fail)?;
+        } else if let Some(ms) = step["pauseReading"].as_u64() {
+            // Not polling the socket is not reading it.
+            tokio::time::sleep(Duration::from_millis(ms)).await;
+            if let Some(label) = step["expectUnfinished"].as_str() {
+                let listener = listeners.get(label).ok_or_else(|| fail(format!("no listener {label}")))?;
+                if listener.finished.load(Ordering::Acquire) {
+                    return Err(fail(format!("{label} wrote every byte while nothing read them")));
+                }
+            }
+        } else if let Some(expected) = step.get("expectBytes") {
+            expect_bytes(connection, expected, within).await.map_err(fail)?;
         } else if let Some(expected) = step.get("expect") {
             let mut actual = next_text(connection, within).await.map_err(fail)?;
             for key in step["ignore"].as_array().into_iter().flatten() {
@@ -365,6 +501,7 @@ async fn next_text(connection: &mut Connection, within: Duration) -> Result<Valu
                 connection.output.entry(stream_label(stream)).or_default().push((seq, bytes))
             }
             Received::Closed(code) => return Err(format!("closed with {code:?}")),
+            Received::Bytes(_) => return Err("raw bytes arrived on a supervisor connection".into()),
         }
     }
 }
@@ -374,8 +511,46 @@ async fn send(connection: &mut Connection, message: Message) -> Result<(), Strin
     socket.send(message).await.map_err(|error| error.to_string())
 }
 
-async fn connect(address: &str, token: &str) -> Result<Socket, String> {
-    let mut request = format!("ws://{address}/v1/supervisor")
+/// Reads raw bytes until they are `{ text }`, or `{ flood: n }` bytes of the
+/// flood pattern.
+async fn expect_bytes(connection: &mut Connection, expected: &Value, within: Duration) -> Result<(), String> {
+    let deadline = Instant::now() + within;
+    let text = expected["text"].as_str().map(str::as_bytes);
+    let total = text.map(<[u8]>::len).or(expected["flood"].as_u64().map(|n| n as usize));
+    let total = total.ok_or("expectBytes names text or flood")?;
+    let mut read = 0usize;
+    while read < total {
+        let left = deadline.saturating_duration_since(Instant::now());
+        let bytes = match connection.receive(left).await? {
+            Received::Bytes(bytes) => bytes,
+            other => return Err(format!("{read} of {total} bytes read, then {other:?} arrived")),
+        };
+        for (i, byte) in bytes.iter().enumerate() {
+            let at = read + i;
+            let wanted = match text {
+                Some(text) => text.get(at).copied(),
+                None => (at < total).then(|| flood_byte(at)),
+            };
+            if wanted != Some(*byte) {
+                return Err(format!("byte {at} is {byte}, not {wanted:?}"));
+            }
+        }
+        read += bytes.len();
+    }
+    Ok(())
+}
+
+fn substitute_text(text: &str, recorded: &HashMap<String, u32>) -> String {
+    let Some((head, label)) = text.split_once('$') else {
+        return text.to_string();
+    };
+    let end = label.find(|c: char| !c.is_ascii_alphanumeric()).unwrap_or(label.len());
+    let value = recorded.get(&label[..end]).unwrap_or_else(|| panic!("nothing recorded as ${}", &label[..end]));
+    format!("{head}{value}{}", substitute_text(&label[end..], recorded))
+}
+
+async fn connect(address: &str, path: &str, token: &str) -> Result<Socket, String> {
+    let mut request = format!("ws://{address}{path}")
         .into_client_request()
         .map_err(|error| error.to_string())?;
     let header = match token {

@@ -10,16 +10,14 @@ metadata:
         pnpm run starters
     That serves a published-form copy of this directory (`starters-published/`,
     rebuilt on each start); `--dir <path>` or `STARTERS_DIR` serves a directory as it is. Then set
-    Studio's "Starter gallery source" to http://localhost:8787. The local docker
-    compose stack runs the same script as its `starters` service.
+    Studio's "Starter gallery source" to http://localhost:8787.
 
     Files are read per request. The starters' own imports are relative paths to
     this checkout's modules; the copy's are the published, pinned form.
 requires:
   # A host-path variable declaring `entry:` needs 0.121.0.
   telo: ">=0.121.0"
-imports:
-  Http: ../modules/http-server
+imports: { Http: ../modules/http-server }
 targets:
   - !ref server
 ports:
@@ -49,9 +47,7 @@ listen:
   port: !cel "ports.http"
   address: !cel "variables.host"
 # Studio's dev page is another origin.
-cors:
-  origin: "*"
-  methods: [ GET ]
+cors: { origin: "*", methods: [GET] }
 mounts:
   - path: /
     mount:

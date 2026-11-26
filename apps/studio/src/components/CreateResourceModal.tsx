@@ -8,6 +8,7 @@ import { Button } from "./ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog";
@@ -87,6 +88,7 @@ export function CreateResourceModal({ open, onOpenChange, kinds, onCreate }: Cre
               {selectedKind ? `New ${selectedKind.fullKind}` : "Create Resource"}
             </DialogTitle>
           </div>
+          <DialogDescription>Pick a kind of resource, then name it.</DialogDescription>
         </DialogHeader>
 
         <div>

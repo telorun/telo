@@ -41,7 +41,7 @@ mounts:
                 placeholder: Ask anything
                 starters: [Summarise this]
                 conversation: { parameter: conversation }
-                refreshes: [/api/chat/conversations]
+                invalidates: [/api/chat/conversations]
                 buttons:
                   regenerate: { kind: Ui.IconButton, label: shown, icon: { kind: Ui.FileIcon, file: !module-path ./glyph.svg } }
                   send: { kind: Ui.IconButton }

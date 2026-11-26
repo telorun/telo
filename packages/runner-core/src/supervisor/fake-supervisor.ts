@@ -1,12 +1,14 @@
 import { randomBytes } from "node:crypto";
-import type { AddressInfo } from "node:net";
+import { connect as connectTcp, type AddressInfo } from "node:net";
 
 import { WebSocketServer, type WebSocket } from "ws";
 
 import { BYTE_STREAM_CODES, type ByteStreamTag } from "../contract.js";
 import {
+  PORT_FORWARD_MAX_QUEUED_BYTES,
   SUPERVISOR_CLOSE,
   SUPERVISOR_PATH,
+  SUPERVISOR_PORT_FORWARD_PATH,
   SupervisorProtocolError,
   type RunnerMessage,
 } from "./supervisor-protocol.js";
@@ -37,9 +39,10 @@ type Ending = { runId: string } & FakeRunEnding;
  * A session supervisor that runs no program, for runners' tests. It speaks the
  * protocol (`specs/supervisor-protocol.md`) as the real one does — handshake,
  * strict validation, idempotent answers by `runId`, supersession, the output
- * ring replayed from `lastSeq` — and runner-core runs every exchange vector that
- * starts no program against it. A run is live from its `run` until `stop` (which
- * ends it with `SIGTERM` at once) or `end()`.
+ * ring replayed from `lastSeq`, port forwards to `127.0.0.1` with their
+ * backpressure — and runner-core runs every exchange vector that starts no
+ * program against it. A run is live from its `run` until `stop` (which ends it
+ * with `SIGTERM` at once) or `end()`.
  */
 export class FakeSupervisor {
   readonly token: string;
@@ -50,6 +53,8 @@ export class FakeSupervisor {
   live: string | undefined;
   /** Every control message a runner sent, `hello` included, as decoded. */
   readonly received: RunnerMessage[] = [];
+  /** The port of every port forward a runner opened, in order. */
+  readonly forwards: number[] = [];
   private lastEnding: Ending | undefined;
   private seq = 0;
   private ring: Buffer[] = [];
@@ -64,11 +69,23 @@ export class FakeSupervisor {
     this.token = options.token;
     this.generation = options.generation;
     this.live = options.live;
-    server.on("connection", (socket, request) => this.accept(socket, request.headers.authorization));
+    server.on("connection", (socket, request) => {
+      const [path, query] = splitTarget(request.url ?? "");
+      if (path === SUPERVISOR_PORT_FORWARD_PATH) this.forward(socket, request.headers.authorization, query);
+      else this.accept(socket, request.headers.authorization);
+    });
   }
 
   static async start(options: FakeSupervisorOptions): Promise<FakeSupervisor> {
-    const server = new WebSocketServer({ host: options.host, port: options.port, path: SUPERVISOR_PATH });
+    const server = new WebSocketServer({
+      host: options.host,
+      port: options.port,
+      verifyClient: ({ req }, answer) => {
+        const [path] = splitTarget(req.url ?? "");
+        if (path === SUPERVISOR_PATH || path === SUPERVISOR_PORT_FORWARD_PATH) answer(true);
+        else answer(false, 404, "no route");
+      },
+    });
     await new Promise<void>((resolve, reject) => {
       server.once("listening", () => resolve());
       server.once("error", reject);
@@ -126,9 +143,67 @@ export class FakeSupervisor {
     await new Promise<void>((resolve, reject) => this.server.close((error) => (error ? reject(error) : resolve())));
   }
 
+  /** `4401` / `4403` closed here; `true` for the supervisor's own token. */
+  private authorized(socket: WebSocket, authorization: string | undefined): boolean {
+    if (authorization === undefined) socket.close(SUPERVISOR_CLOSE.tokenMissing, "no bearer token");
+    else if (authorization !== `Bearer ${this.token}`) socket.close(SUPERVISOR_CLOSE.tokenInvalid, "wrong token");
+    else return true;
+    return false;
+  }
+
+  private forward(socket: WebSocket, authorization: string | undefined, query: string | undefined): void {
+    if (!this.authorized(socket, authorization)) return;
+    let port: number;
+    try {
+      port = parsePortForwardQuery(query);
+    } catch (error) {
+      return socket.close(SUPERVISOR_CLOSE.protocolError, (error as Error).message.slice(0, 120));
+    }
+    this.forwards.push(port);
+    this.sockets.add(socket);
+    // Nothing the runner sends is read until the port answers.
+    socket.pause();
+    const target = connectTcp({ host: "127.0.0.1", port });
+    let connected = false;
+    let queued = 0;
+    target.once("connect", () => {
+      connected = true;
+      socket.resume();
+    });
+    target.on("error", (error) => {
+      const reason = connected ? `the port's connection failed: ${error.message}` : `nothing accepts a connection on 127.0.0.1:${port}`;
+      // A paused socket never reads the runner's closing reply.
+      socket.resume();
+      socket.close(SUPERVISOR_CLOSE.portUnreachable, reason.slice(0, 120));
+    });
+    target.on("data", (chunk: Buffer) => {
+      queued += chunk.byteLength;
+      socket.send(chunk, { binary: true }, () => {
+        queued -= chunk.byteLength;
+        if (queued <= PORT_FORWARD_MAX_QUEUED_BYTES && target.isPaused()) target.resume();
+      });
+      if (queued > PORT_FORWARD_MAX_QUEUED_BYTES) target.pause();
+    });
+    target.on("end", () => socket.close(1000, "the port's connection ended"));
+    socket.on("message", (data, isBinary) => {
+      if (!isBinary) {
+        target.destroy();
+        return socket.close(SUPERVISOR_CLOSE.protocolError, "a port forward carries binary frames only");
+      }
+      const bytes = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as ArrayBuffer);
+      if (!target.write(bytes)) {
+        socket.pause();
+        target.once("drain", () => socket.resume());
+      }
+    });
+    socket.on("close", () => {
+      this.sockets.delete(socket);
+      target.end();
+    });
+  }
+
   private accept(socket: WebSocket, authorization: string | undefined): void {
-    if (authorization === undefined) return socket.close(SUPERVISOR_CLOSE.tokenMissing, "no bearer token");
-    if (authorization !== `Bearer ${this.token}`) return socket.close(SUPERVISOR_CLOSE.tokenInvalid, "wrong token");
+    if (!this.authorized(socket, authorization)) return;
     this.sockets.add(socket);
     let greeted = false;
     const helloTimer = setTimeout(() => socket.close(SUPERVISOR_CLOSE.helloTimeout, "no hello"), HELLO_TIMEOUT_MS);
@@ -209,6 +284,23 @@ function instanceId(): string {
 }
 
 class GenerationMismatch extends Error {}
+
+function splitTarget(target: string): [path: string, query: string | undefined] {
+  const at = target.indexOf("?");
+  return at < 0 ? [target, undefined] : [target.slice(0, at), target.slice(at + 1)];
+}
+
+/** The supervisor's reading of a port forward's query (spec § 8): exactly
+ *  `port=<n>`, `n` a decimal from 1 to 65535 with no sign or leading zero. */
+function parsePortForwardQuery(query: string | undefined): number {
+  const digits = query?.startsWith("port=") ? query.slice("port=".length) : undefined;
+  if (digits === undefined) throw new SupervisorProtocolError(`a port forward's query is 'port=<n>', got ${JSON.stringify(query ?? "")}`);
+  const port = /^[1-9][0-9]{0,4}$/.test(digits) ? Number(digits) : 0;
+  if (port < 1 || port > 0xffff) {
+    throw new SupervisorProtocolError(`a port forward's port is a decimal from 1 to 65535, got ${JSON.stringify(digits)}`);
+  }
+  return port;
+}
 
 /** The supervisor's strict reading of a runner message (spec § 3, § 4.1). */
 function decodeRunnerMessage(text: string, generation: number): RunnerMessage {

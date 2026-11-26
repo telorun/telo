@@ -25,7 +25,7 @@ type ChatResource = RuntimeResource & {
   buttons?: Partial<Record<ButtonKey, unknown>> | null;
   composer?: { actions?: "inside" | "outside" | null } | null;
   conversation?: { parameter: string } | null;
-  refreshes?: AddressConfig[] | null;
+  invalidates?: AddressConfig[] | null;
 };
 
 /** The header drawn when the author writes none: a bar whose end holds the export command, drawn by its text (a command's default display). */
@@ -110,7 +110,7 @@ class Chat implements ResourceInstance {
         buttons,
         composer: { actions: resource.composer?.actions ?? "inside" },
         conversation: resource.conversation == null ? null : { parameter: resource.conversation.parameter },
-        refreshes: (resource.refreshes ?? []).map((refresh, index) => addressSpec(refresh, this.ctx, `${owner} refreshes[${index}]`)),
+        invalidates: (resource.invalidates ?? []).map((target, index) => addressSpec(target, this.ctx, `${owner} invalidates[${index}]`)),
       },
       assets: mergeAssets(assets),
     });

@@ -7,6 +7,8 @@ messages:
   noRows: Brak wierszy.
   nothingFound: Nic nie znaleziono.
   save: Zapisz
+  saving: Zapisywanie…
+  retry: Spróbuj ponownie
   cancel: Anuluj
   close: Zamknij
   newRecord: Nowy

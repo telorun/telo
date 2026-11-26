@@ -9,17 +9,23 @@ import {
   type ReferentPlace,
   type ReferentReads,
 } from "./read-place.js";
-import { CEL_ENGINE, isTaggedSentinel } from "@telorun/templating";
+import { CEL_ENGINE, isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import {
   elementSchemaOf,
   isLiveSlot,
   mergeTypeSchemas,
   parseCanonicalTypeSchemaId,
+  X_TELO_TYPE,
   type ResourceDefinition,
+  type ResourceManifest,
 } from "@telorun/sdk";
+import { TYPE_CONSTRAINING_KEYWORDS } from "@telorun/cel";
 import { KERNEL_BUILTINS } from "./builtins.js";
 import { CONTEXT_FROM_PATH_TEMPLATE, pathTemplateParams } from "./context-from-path-template.js";
 import { CONTEXT_FROM_REFERRER, fromReferrerOwnKeywords, TYPING_ANNOTATIONS } from "./context-from-referrer.js";
+import { CONTEXT_REF_FROM, crossesSlotFrom, refFromPaths } from "./context-ref-from.js";
+import { CONTEXT_WITHHELD, withheldOnly, withheldReason } from "./context-withheld.js";
+import { isInjectedDeclaration } from "./resource-input.js";
 import { ELEMENT_FROM_ITEM } from "./element-from-item.js";
 import { inheritedCapability, type DefResolver } from "./extends-resolution.js";
 import { kindDeclarationOf } from "./kind-declaration.js";
@@ -43,7 +49,12 @@ import {
   type NamedShapeLookup,
 } from "./eval-paths.js";
 import { isResolvedReference } from "./resolved-reference.js";
-import { declarationValuesAt, readDeclarationValuesAt, type DeclarationValue } from "./schema-projection.js";
+import {
+  declarationValuesAt,
+  readDeclarationValuesAt,
+  type DeclarationValue,
+  type ProjectionTrail,
+} from "./schema-projection.js";
 import { namedShapeReading } from "./named-shape-reading.js";
 import type { ValueSchemaHost } from "./value-schema-slot.js";
 
@@ -521,8 +532,11 @@ function collectionBindingWithheld(
  *   used by `result:` to find its dispatch target under whichever entry-point
  *   field (`provide:` or `invoke:`) the definition declares.
  *
- * - `x-telo-context-ref-from`: existing form — reads `{kind, name}` object from
- *   `manifestItem.<path>`, looks up the named manifest, returns its `<subpath>` field.
+ * - `x-telo-context-ref-from`: a path, or ordered alternatives, read from the
+ *   context holder as data to its first reference slot and across each slot —
+ *   the field it ends on types the node ({@link readRefFromPath}). Where the
+ *   path holds nothing the node keeps its own keywords; where no alternative
+ *   names anything a withheld node stays withheld.
  *
  * **Fallback chain.** When both `x-telo-context-from-root` and
  * `x-telo-context-from-ref-kind` are present on the same node, the resolver tries
@@ -734,59 +748,26 @@ export function resolveContextAnnotations(
     return {};
   }
 
-  const refFrom = schema["x-telo-context-ref-from"] as string | undefined;
-  if (refFrom && declarations) {
-    const reference = readContextRefFrom(refFrom, contextHolder);
-    if (reference) {
-      const { ref, subpath } = reference;
-      const segments = subpath.split("/");
-      // Read where the expression is written: in a region of a scope the
-      // resource declares, or in a scope member's own fields, the scope's
-      // members come first.
-      const names = declarations.names;
-      const member = names.scopeMember(ref.name, scopeReadAt(manifestRoot, sitePath));
-      const refManifest = (
-        member
-          ? member.kind === ref.kind
-            ? member
-            : undefined
-          : (names.declarationsOf(ref.name).find((m) => m.kind === ref.kind) ?? crossedDeclaration(ref, manifestRoot, referenceHost))
-      ) as Record<string, any> | undefined;
-      if (refManifest) {
-        const resolved = refFromSchema(foldedShape(declarations)(refManifest), segments, declarations, referenceHost);
-        if (resolved) return keepDeclaredNullability(schema, resolved);
+  if (schema[CONTEXT_REF_FROM] !== undefined && declarations) {
+    const site: RefFromSite = { manifestRoot, sitePath, declarations, referenceHost, shapes: shapes ?? defs?.schemaForId?.bind(defs) };
+    const { [CONTEXT_WITHHELD]: _withheld, ...unwithheld } = schema;
+    // Ordered alternatives: the first that names something types the node, and
+    // no later one is read.
+    for (const segments of refFromPaths(schema[CONTEXT_REF_FROM]) ?? []) {
+      const reading = readRefFromPath(segments, contextHolder, site);
+      if (reading.state === "nothing") continue;
+      if (reading.ref) {
+        const typed = refFromType(reading.ref, reading.subpath, site, defs, aliases);
+        if (typed.schema) return keepDeclaredNullability(schema, typed.schema);
+        if (reading.state === "named" && reading.fieldAbsent && !typed.held) return refFromOwnReading(unwithheld);
       }
-      // The instance declares nothing, so fall back to its KIND's declaration —
-      // the same layering `buildStepContextSchema` applies to `steps.<name>.result`,
-      // so a kind with one fixed output shape (declared once on its Telo.Definition)
-      // types the context, while a kind that exposes the field for per-instance
-      // narrowing keeps winning above.
-      if (defs) {
-        const canonical = aliases?.resolveKind(ref.kind) ?? ref.kind;
-        const def = defs.resolve(canonical) as Record<string, unknown> | undefined;
-        if (def) {
-          const resolved = resolveTypeFieldToSchema(
-            navigatePath(def, segments) as unknown,
-            declarations,
-          );
-          if (resolved && typeof resolved === "object") {
-            return keepDeclaredNullability(schema, resolved);
-          }
-          // Neither declares the contract: the instance's own value slot for it
-          // (a sequence's `outputs:`) is what it produces.
-          if (segments.length === 1) {
-            const derived = valueDerivedContract(
-              refManifest,
-              (defs.effectiveSchemaOf?.(def) ?? def.schema) as Record<string, any> | undefined,
-              segments[0]!,
-            );
-            if (derived) return keepDeclaredNullability(schema, derived);
-          }
-        }
-      }
+      // Something no type can be read from: open, so an undeclared shape raises
+      // no false error.
+      return { ...unwithheld, additionalProperties: true };
     }
-    // Fallback: open schema (no false errors when outputType is not declared)
-    return { ...schema, additionalProperties: true };
+    // No alternative names anything: withheld where the node says so, else
+    // what it declares itself.
+    return withheldReason(schema) !== undefined ? withheldOnly(schema) : refFromOwnReading(schema);
   }
 
   if (schema.properties) {
@@ -952,23 +933,203 @@ export function getManifestItem(
   );
 }
 
+/** Where an `x-telo-context-ref-from` path is read: the declaration and site of
+ *  the expression, and how references and named shapes are followed. */
+export interface RefFromSite {
+  readonly manifestRoot: Record<string, any>;
+  readonly sitePath: string | undefined;
+  readonly declarations: DeclarationRequests;
+  readonly referenceHost: ValueSchemaHost | undefined;
+  readonly shapes: NamedShapeLookup | undefined;
+}
+
 /**
- * What `x-telo-context-ref-from: "<refProp>/<subpath>"` names: the reference
- * held under `<refProp>` on `holder` — the object holding the field the context
- * is declared on, and nothing else — and the `<subpath>` to read on its target.
- * Nothing when the annotation names no subpath or the holder has no reference
- * there. The annotation's single reader.
+ * What one `x-telo-context-ref-from` path reaches from `holder`, the object
+ * holding the region: NOTHING where a segment before its last crossed slot holds
+ * nothing; UNKNOWN where a crossing cannot be followed here — a computed value,
+ * a declaration outside the analysis, a library's kind-only input; NAMED where
+ * every segment through the last slot holds a value, with the last declaration
+ * reached, the field read there and whether it is absent. `ref` and `subpath`
+ * are the first slot's reference and what follows it, wherever the walk got
+ * that far.
  */
-export function readContextRefFrom(
-  annotation: string,
+export type RefFromReading =
+  | { readonly state: "nothing" }
+  | { readonly state: "unknown"; readonly ref?: Record<string, any>; readonly subpath: readonly string[] }
+  | {
+      readonly state: "named";
+      readonly ref: Record<string, any>;
+      readonly subpath: readonly string[];
+      readonly declaration: Record<string, any>;
+      readonly field: readonly string[];
+      readonly fieldAbsent: boolean;
+    };
+
+const NAMES_NOTHING: RefFromReading = { state: "nothing" };
+
+const holdsNothing = (value: unknown): boolean => value === undefined || value === null;
+
+const isContainer = (value: unknown): value is Record<string, any> => !!value && typeof value === "object";
+
+/** A reference at a slot: resolved, or the `!ref` the loader wrote, as a set
+ *  read before resolution (the editor's) still holds it. */
+const isReference = (value: unknown): value is Record<string, any> => isResolvedReference(value) || isRefSentinel(value);
+
+/**
+ * The one reader of an `x-telo-context-ref-from` path: read as data from
+ * `holder` to the first reference slot, then across each slot into the
+ * declaration it names — the first in the scope of the expression (a scope
+ * member innermost out, the module, then a reference into another module),
+ * every later one in the module that wrote it. Which absent segment sits before
+ * a crossed slot is the kind's schema; beyond the first crossing that needs the
+ * reference host.
+ */
+export function readRefFromPath(
+  segments: readonly string[],
   holder: Record<string, any>,
-): { ref: { kind: string; name: string }; subpath: string } | undefined {
-  const slash = annotation.indexOf("/");
-  if (slash === -1) return undefined;
-  const subpath = annotation.slice(slash + 1);
-  const ref = holder[annotation.slice(0, slash)] as Record<string, any> | undefined;
-  if (!subpath || !isResolvedReference(ref)) return undefined;
-  return { ref, subpath };
+  site: RefFromSite,
+): RefFromReading {
+  let value: unknown = holder;
+  for (let i = 0; i < segments.length - 1; i++) {
+    if (isDynamicNode(value) || !isContainer(value)) return { state: "unknown", subpath: [] };
+    const next = value[segments[i]!];
+    if (holdsNothing(next)) return NAMES_NOTHING;
+    if (isReference(next)) return readPastFirstSlot(next, segments.slice(i + 1), site);
+    value = next;
+  }
+  // The path crosses no slot (refused at the kind): it names nothing.
+  return NAMES_NOTHING;
+}
+
+function readPastFirstSlot(
+  ref: Record<string, any>,
+  subpath: readonly string[],
+  site: RefFromSite,
+): RefFromReading {
+  const unknown: RefFromReading = { state: "unknown", ref, subpath };
+  const first = firstDeclarationOf(ref, site);
+  if (!first || isInjectedDeclaration(first as ResourceManifest)) return unknown;
+  const host = site.referenceHost;
+  let declaration = first;
+  let trail: ProjectionTrail | undefined;
+  let start = 0;
+  let value: unknown = first;
+  for (let j = 0; j < subpath.length; j++) {
+    if (isDynamicNode(value) || !isContainer(value)) return unknown;
+    const next = value[subpath[j]!];
+    const field = subpath.slice(start);
+    if (j === subpath.length - 1) {
+      return { state: "named", ref, subpath, declaration, field, fieldAbsent: holdsNothing(next) };
+    }
+    if (holdsNothing(next)) {
+      const kindSchema = host ? kindSchemaOf(declaration, host) : undefined;
+      if (!kindSchema) return unknown;
+      return crossesSlotFrom(kindSchema, field, j - start, site.shapes)
+        ? NAMES_NOTHING
+        : { state: "named", ref, subpath, declaration, field, fieldAbsent: true };
+    }
+    if (isReference(next)) {
+      const found = host?.scope.resolveManifest(next, declaration, trail);
+      if (!found || !("manifest" in found) || isInjectedDeclaration(found.manifest as ResourceManifest)) return unknown;
+      declaration = found.manifest;
+      trail = found.trail;
+      start = j + 1;
+      value = declaration;
+      continue;
+    }
+    if (isDynamicNode(next)) return unknown;
+    value = next;
+  }
+  return unknown;
+}
+
+/** The declaration the first slot's reference names, read where the expression
+ *  is written: in a region of a scope the resource declares, or in a scope
+ *  member's own fields, the scope's members come first. */
+function firstDeclarationOf(ref: Record<string, any>, site: RefFromSite): Record<string, any> | undefined {
+  if (!isResolvedReference(ref)) return crossedDeclaration(ref, site.manifestRoot, site.referenceHost);
+  const names = site.declarations.names;
+  const member = names.scopeMember(ref.name, scopeReadAt(site.manifestRoot, site.sitePath));
+  if (member) return member.kind === ref.kind ? (member as Record<string, any>) : undefined;
+  return (
+    (names.declarationsOf(ref.name).find((m) => m.kind === ref.kind) as Record<string, any> | undefined) ??
+    crossedDeclaration(ref, site.manifestRoot, site.referenceHost)
+  );
+}
+
+/** The author-facing schema of `declaration`'s kind, inheritance resolved. */
+function kindSchemaOf(declaration: Record<string, any>, host: ValueSchemaHost): Record<string, any> | undefined {
+  if (typeof declaration.kind !== "string") return undefined;
+  const definition = host.scope.resolveDefinition(declaration.kind, declaration);
+  if (!definition) return undefined;
+  const schema = host.scope.effectiveKind?.(definition)?.schema ?? definition.schema;
+  return schema && typeof schema === "object" ? (schema as Record<string, any>) : undefined;
+}
+
+/**
+ * The type the field at `subpath` past the first slot's reference reads, and
+ * whether anything was found there to read one from: the declaration's own
+ * field (through every later slot), then its kind's declaration, then — for one
+ * segment — the instance's own value slot for it.
+ */
+function refFromType(
+  ref: Record<string, any>,
+  subpath: readonly string[],
+  site: RefFromSite,
+  defs: ContextResolveOpts["defs"],
+  aliases: ContextResolveOpts["aliases"],
+): { readonly schema?: Record<string, any>; readonly held: boolean } {
+  const { declarations, referenceHost } = site;
+  const segments = [...subpath];
+  const refManifest = firstDeclarationOf(ref, site);
+  let held = false;
+  if (refManifest) {
+    const folded = foldedShape(declarations)(refManifest);
+    const resolved = refFromSchema(folded, segments, declarations, referenceHost);
+    if (resolved) return { schema: resolved, held: true };
+    held = segments.length === 1 && navigatePath(folded, segments) !== undefined;
+  }
+  // The instance declares nothing, so fall back to its KIND's declaration —
+  // the same layering `buildStepContextSchema` applies to `steps.<name>.result`,
+  // so a kind with one fixed output shape (declared once on its Telo.Definition)
+  // types the context, while a kind that exposes the field for per-instance
+  // narrowing keeps winning above.
+  if (defs) {
+    const canonical = aliases?.resolveKind(String(ref.kind)) ?? String(ref.kind);
+    const def = defs.resolve(canonical) as Record<string, unknown> | undefined;
+    if (def) {
+      const declared = navigatePath(def, segments);
+      const resolved = resolveTypeFieldToSchema(declared as unknown, declarations);
+      if (resolved && typeof resolved === "object") return { schema: resolved, held: true };
+      held ||= declared !== undefined;
+      // Neither declares the contract: the instance's own value slot for it
+      // (a sequence's `outputs:`) is what it produces.
+      if (segments.length === 1) {
+        const derived = valueDerivedContract(
+          refManifest,
+          (defs.effectiveSchemaOf?.(def) ?? def.schema) as Record<string, any> | undefined,
+          segments[0]!,
+        );
+        if (derived) return { schema: derived, held: true };
+      }
+    }
+  }
+  return { held };
+}
+
+/** `node` without its `x-telo-context-ref-from`. */
+function withoutRefFrom(node: Record<string, any>): Record<string, any> {
+  const { [CONTEXT_REF_FROM]: _refFrom, ...own } = node;
+  return own;
+}
+
+/** What a node typed by `x-telo-context-ref-from` is where its path holds
+ *  nothing: the keywords it declares itself, or — declaring none — open, so an
+ *  undeclared shape raises no false error. */
+function refFromOwnReading(node: Record<string, any>): Record<string, any> {
+  const own = withoutRefFrom(node);
+  const declaresType = X_TELO_TYPE in own || TYPE_CONSTRAINING_KEYWORDS.some((keyword) => keyword in own);
+  return declaresType ? own : { ...node, additionalProperties: true };
 }
 
 /**
@@ -1171,17 +1332,22 @@ function refFromReads(subpath: string): ReferentReads {
   return reads;
 }
 
-/** What `x-telo-context-ref-from` reads: the sibling reference on the object
- *  holding the region, and in the declaration it names — and, for a subpath of
- *  several segments, onward in each one a reference on the way names — the
+/** What `x-telo-context-ref-from` reads, for each alternative: the object
+ *  holding the region along the path to its first reference, wherever along it
+ *  that reference stands, and in the declaration it names — and, for a subpath
+ *  of several segments, onward in each one a reference on the way names — the
  *  places the binding is typed from. */
 export const contextRefFromReads: ReadReporter = ({ value, at }) => {
-  if (typeof value !== "string" || value.indexOf("/") <= 0) return [];
-  const keys = fieldPlace(enclosingKeys(at), value.slice(0, value.indexOf("/")));
-  const subpath = value.slice(value.indexOf("/") + 1);
-  return keys
-    ? [{ kind: "reference", keys, transitive: subpath.includes("/"), reads: refFromReads(subpath) }]
-    : [];
+  const holder = enclosingKeys(at);
+  const out: ReadPlace[] = [];
+  for (const segments of refFromPaths(value) ?? []) {
+    for (let end = 1; end < segments.length; end++) {
+      const keys = fieldPlace(holder, segments.slice(0, end).join("/"));
+      const subpath = segments.slice(end).join("/");
+      if (keys) out.push({ kind: "reference", keys, transitive: subpath.includes("/"), reads: refFromReads(subpath) });
+    }
+  }
+  return out;
 };
 
 /** What `x-telo-context-element-from` / `-collection-from` read: the sibling

@@ -14,7 +14,7 @@ import {
   type RootShapes,
 } from "./node-resolution.js";
 import { headerReads, type HeaderReads } from "./request-header-reads.js";
-import { boundActionsOf, placedBoundAction, withBoundActions } from "./bound-actions.js";
+import { mutationCallsOf, placedMutationCall, withMutationCalls, type AnsweredCall } from "./mutation-calls.js";
 import { isPane, paneAssets, paneInputs, type PaneInstance, type PaneRequest } from "./pane.js";
 import { type QuerySpec } from "./query-controller.js";
 import { queryOf } from "./query-node.js";
@@ -40,20 +40,20 @@ export interface EvaluatedNode {
  *  judge it again. */
 const JUDGED: SpecNode = { type: "stack", children: [], press: null, fill: false };
 
-/** Stands where an action already judged sits inside a bound action. */
-const JUDGED_ACTION: SpecNode = {
-  type: "action",
-  schema: {},
-  request: { method: "POST", target: { path: { value: "/" }, pathParams: {}, queryParams: {} }, consumed: [] },
-  label: uiText("save"),
-  fields: [],
-  groups: [],
-  state: { address: false, store: { type: "memory" }, fields: [] },
+/** Stands where a call's answer, already judged, sits inside a call. */
+const JUDGED_ANSWER = {
+  mutation: {
+    id: "",
+    schema: {},
+    method: "POST",
+    url: { path: { value: "/" }, pathParams: {}, queryParams: {} },
+    consumed: [],
+    invalidates: [],
+    concurrency: "parallel",
+  },
+  prompt: null,
+  onSuccess: [],
   failure: JUDGED,
-  onSuccess: { refreshes: [] },
-  concurrency: "parallel",
-  clearAnswerOn: [],
-  fill: false,
 };
 
 type Invalid = (node: SpecNode, reason: string) => void;
@@ -83,6 +83,7 @@ export function producedNode(
   invalid: Invalid,
   answered: (ref: unknown) => SpecNode | null | undefined = () => undefined,
   queried: (ref: unknown) => QuerySpec | undefined = () => undefined,
+  called: (ref: unknown) => AnsweredCall | undefined = () => undefined,
 ): SpecNode | undefined {
   if (node.when === false) return undefined;
   const { when, ...rest } = node;
@@ -93,7 +94,7 @@ export function producedNode(
     const judged: Record<string, unknown> = { ...rest, query: spec };
     for (const list of nodeLists(node)) {
       const children = ((node[list] as EvaluatedNode[] | undefined) ?? [])
-        .map((child) => producedNode(child, provided, validator, invalid, answered, queried))
+        .map((child) => producedNode(child, provided, validator, invalid, answered, queried, called))
         .filter((child): child is SpecNode => child !== undefined);
       produced[list] = children;
       judged[list] = children.map(() => JUDGED);
@@ -127,7 +128,7 @@ export function producedNode(
         ? {
             ...tab,
             children: (tab.children as EvaluatedNode[])
-              .map((child) => producedNode(child, provided, validator, invalid, answered, queried))
+              .map((child) => producedNode(child, provided, validator, invalid, answered, queried, called))
               .filter((child): child is SpecNode => child !== undefined),
           }
         : tab,
@@ -138,18 +139,18 @@ export function producedNode(
     const reason = refusalOf({ ...rest, tabs: judged } as SpecNode, validator);
     return reason === undefined ? produced : refuse(produced, reason, invalid);
   }
-  const entries = boundActionsOf(rest as EvaluatedNode);
+  const entries = mutationCallsOf(rest as EvaluatedNode);
   if (entries.length > 0) {
-    // A bound action's action stands as the node it provided at start, judged
-    // there; the node is judged around it.
-    const actions = entries.map((entry) => provided(entry.action));
-    if (actions.some((action) => !action)) {
-      return refuse(rest as SpecNode, "a bound action's 'action' names nothing this application resolved", invalid);
+    // A call's answer stands as what it provided at start, judged there; the
+    // node is judged around it.
+    const answers = entries.map((entry) => called(entry.call));
+    if (answers.some((answer) => !answer)) {
+      return refuse(rest as SpecNode, "a call names nothing this application resolved", invalid);
     }
-    const judged = withBoundActions(rest as EvaluatedNode, entries.map((entry) => placedBoundAction(entry as never, JUDGED_ACTION)));
+    const judged = withMutationCalls(rest as EvaluatedNode, entries.map((entry) => placedMutationCall(entry as never, JUDGED_ANSWER)));
     const reason = refusalOf(judged as SpecNode, validator);
     if (reason !== undefined) return refuse(rest as SpecNode, reason, invalid);
-    return withBoundActions(rest as EvaluatedNode, entries.map((entry, index) => placedBoundAction(entry as never, actions[index]!))) as SpecNode;
+    return withMutationCalls(rest as EvaluatedNode, entries.map((entry, index) => placedMutationCall(entry as never, answers[index]!))) as SpecNode;
   }
   const lists = nodeLists(node);
   if (lists.length === 0) {
@@ -160,7 +161,7 @@ export function producedNode(
   const judged: Record<string, unknown> = { ...rest };
   for (const list of lists) {
     const children = ((node[list] as EvaluatedNode[] | undefined) ?? [])
-      .map((child) => producedNode(child, provided, validator, invalid, answered, queried))
+      .map((child) => producedNode(child, provided, validator, invalid, answered, queried, called))
       .filter((child): child is SpecNode => child !== undefined);
     produced[list] = children;
     judged[list] = children.map(() => JUDGED);
@@ -203,10 +204,11 @@ interface Providing {
 const provides = (candidate: unknown): candidate is Providing =>
   typeof (candidate as Providing | null)?.provide === "function";
 
-/** Where a tree's resources are numbered: each composite and each bound
- *  action's action in `placed`, each pane in `panes`. */
+/** Where a tree's resources are numbered: each composite and each
+ *  call in `placed`, each pane in `panes`. */
 interface Numbering {
   placed: unknown[];
+  calls: { provide(): Promise<{ node: AnsweredCall; assets: AssetFile[] }> }[];
   panes: PaneInstance[];
   queries: QuerySpec[];
   query(ref: unknown, where: string): QuerySpec;
@@ -215,7 +217,7 @@ interface Numbering {
 }
 
 /**
- * Nodes with each composite's `ref`, and each bound action's `action`,
+ * Nodes with each composite's `ref`, and each call's `call`,
  * replaced by its index in `placed`, and each pane's `ref` by its index in
  * `panes`, where the instance is appended. A tree's structure and references
  * are literal — only leaf values are evaluated per request — so the numbering
@@ -247,11 +249,11 @@ function withCompositesNumbered(node: unknown, numbering: Numbering, where: stri
     for (const list of lists) numbered[list] = withCompositesNumbered((node as EvaluatedNode)[list], numbering, `${where}.${list}`);
     return numbered;
   }
-  const entries = boundActionsOf(node as EvaluatedNode);
+  const entries = mutationCallsOf(node as EvaluatedNode);
   if (entries.length === 0) return node;
-  return withBoundActions(
+  return withMutationCalls(
     node as EvaluatedNode,
-    entries.map((entry) => (provides(entry.action) ? { ...entry, action: numbering.placed.push(entry.action) - 1 } : entry)),
+    entries.map((entry) => (typeof (entry.call as { provide?: unknown } | undefined)?.provide === "function" ? { ...entry, call: numbering.calls.push(entry.call as never) - 1 } : entry)),
   );
 }
 
@@ -291,6 +293,8 @@ export class RequestNodes {
     private readonly panes: PaneInstance[],
     /** Each numbered query's spec. */
     private readonly queries: QuerySpec[],
+    /** What each numbered call provided. */
+    private readonly answers: AnsweredCall[],
     private readonly validator: DataValidator,
     /** Every file the composites and panes can name, each once. */
     readonly assets: AssetFile[],
@@ -311,6 +315,7 @@ export class RequestNodes {
     }
     const numbering: Numbering = {
       placed: [],
+      calls: [],
       panes: [],
       queries: [],
       query: (ref, at) => queryOf(ref, ctx, `${where}${at}`),
@@ -338,9 +343,15 @@ export class RequestNodes {
             ),
       );
     }
+    const answers: AnsweredCall[] = [];
+    for (const call of numbering.calls) {
+      const answered = await call.provide();
+      assets.push(answered.assets);
+      answers.push(answered.node);
+    }
     for (const pane of numbering.panes) assets.push(paneAssets(pane));
     const reads = numbering.panes.length > 0 ? "*" : headerReads(tree);
-    return new RequestNodes(ctx, where, tree, composites, numbering.panes, numbering.queries, validator, mergeAssets(...assets, ...buttons), reads);
+    return new RequestNodes(ctx, where, tree, composites, numbering.panes, numbering.queries, answers, validator, mergeAssets(...assets, ...buttons), reads);
   }
 
   /** The nodes for one request: evaluated over it, each pane it delivers
@@ -375,6 +386,7 @@ export class RequestNodes {
           invalid,
           (ref) => answers.get(ref as number),
           (ref) => this.queries[ref as number],
+          (ref) => this.answers[ref as number],
         ),
       )
       .filter((node): node is SpecNode => node !== undefined)

@@ -293,6 +293,66 @@ is refused once, naming the page. Put `x-telo-context-from-referrer` on the
 binding itself; the shared reason may still sit in a `$defs` entry the binding
 names by `$ref`.
 
+**Beside `x-telo-context-ref-from`.** That annotation types a node from what a
+reference on the object holding the region names. Its value is a path read
+from that object: data segments up to a reference slot, then on past each slot
+into the declaration the slot names, ending at the field that types the node.
+It may also be a list of paths, read as ordered alternatives. The kind's schema
+decides which segments are slots.
+
+A path **names nothing** when a segment before the last slot it crosses holds
+nothing. It **names something** when every segment through that slot holds a
+value, whether or not the field it ends on is there. A crossing that cannot be
+followed counts as naming something and leaves the node open: a computed value,
+a declaration outside the analysis, or a library's kind-only input.
+
+The first alternative that names something types the node, and the later ones
+are not read. Where it names something, the mark is dropped:
+
+- the node is typed from that field: the last declaration's own field, then
+  its kind's declaration, then, for a one-segment field, the contract the
+  instance's value slot implies;
+- where the field holds nothing after those fallbacks, the node keeps the JSON
+  Schema keywords it declares itself, or is open when it declares none;
+- where the field holds something no type can be read from, the node is open.
+
+Where no alternative names anything, the node is withheld:
+
+```yaml
+# a lookup: `sheet` is the record of the sheet it names, and nothing where it names none
+url:
+  type: string
+  x-telo-eval: runtime
+  x-telo-context:
+    type: object
+    properties:
+      sheet:
+        x-telo-context-ref-from: sheet/model
+        x-telo-context-withheld: the lookup names no sheet in `sheet`.
+```
+
+```
+'sheet' is not available here: the lookup names no sheet in `sheet`.
+```
+
+A node typed by a list carries the keywords of its own reading. For example,
+an answer that is closed and empty where the reached write declares none:
+
+```yaml
+result:
+  x-telo-context-ref-from: [onSubmit/write/answer, record/view/feed/table/model]
+  type: object
+  properties: {}
+  additionalProperties: false
+```
+
+The segments up to and including the first slot are judged against the schema
+of the object holding the region, in any of its branches. A path that names a
+segment that schema does not declare, or crosses no slot, is
+`CONTEXT_REF_FROM_INVALID`, reported at the kind. The segments past the first
+slot are not judged. A value that is not a path or a non-empty list of paths,
+or that has an empty segment (`a//b`), is `SCHEMA_VIOLATION`.
+
 **At the schema root, on an abstract.** An `x-telo-context` written at a
 kind's schema root, as above, is in force at every CEL site of the resource: it
 names what each site may read and marks no field as evaluated, which stays
@@ -307,13 +367,20 @@ pane typed from its referrers would fall back to its own keywords.
 
 The editor offers no withheld name, and hovering one shows the reason.
 
-**Misuse.** Written outside a binding's subtree (other than a `$defs` entry a
-binding may name), or beside anything but `x-telo-context-eval`,
-`x-telo-context-from-referrer`, `x-telo-context-partial`, `title` and
-`description` — a type keyword, or
-another typing annotation — the annotation is `CONTEXT_WITHHELD_INVALID`,
-reported at the kind. A value that is not a non-empty string is
-`SCHEMA_VIOLATION`.
+**Misuse.** The annotation is `CONTEXT_WITHHELD_INVALID`, reported at the
+kind, when it is:
+
+- written outside a binding's subtree, other than in a `$defs` entry a binding
+  may name;
+- written beside anything but `x-telo-context-eval`,
+  `x-telo-context-from-referrer`, `x-telo-context-partial`, `title` and
+  `description`, which rules out a type keyword or another typing annotation.
+  Beside `x-telo-context-ref-from`, the keywords of the node's own reading are
+  allowed too;
+- written beside both `x-telo-context-from-referrer` and
+  `x-telo-context-ref-from`.
+
+A value that is not a non-empty string is `SCHEMA_VIOLATION`.
 
 ## Runtime
 

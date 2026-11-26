@@ -15,7 +15,7 @@ export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..")
 /** `file` relative to the repository root, `/`-separated on every platform. */
 const repoPath = (file: string) => relative(ROOT, file).split(sep).join("/");
 
-const fileSource: ManifestSource = {
+export const fileSource: ManifestSource = {
   supports: (url) => isAbsolute(url),
   async read(url) {
     const file = existsSync(url) && statSync(url).isDirectory() ? join(url, "telo.yaml") : url;

@@ -101,16 +101,21 @@ children:
   - { type: text, text: Shorten a URL, style: title }
   - type: composite
     ref:
-      kind: Ui.Action
-      inputModel: !ref ShortenRequest
-      outputModel: !ref ShortenAnswer
-      request: { target: /api/shorten }
-      label: Shorten
-      result:
-        type: stack
-        children:
-          - { type: text, text: Your short URL, style: muted }
-          - { type: value, value: !cel "result.shortUrl", style: strong }
+      kind: Ui.Form
+      model: !ref ShortenRequest
+      onSubmit:
+        mutation:
+          kind: Ui.Mutation
+          inputModel: !ref ShortenRequest
+          outputModel: !ref ShortenAnswer
+          url: /api/shorten
+        inputs: { url: !cel "values.url" }
+        label: Shorten
+        result:
+          type: stack
+          children:
+            - { type: text, text: Your short URL, style: muted }
+            - { type: value, value: !cel "result.shortUrl", style: strong }
 ---
 kind: UiReact.App
 metadata: { name: app }

@@ -116,6 +116,13 @@ describe("rewriteMetadataName", () => {
     expect(out).not.toContain("OldName");
   });
 
+  it("sets metadata.title when one is given", () => {
+    const text = "kind: Telo.Application\nmetadata:\n  name: OldName\n  version: 1.0.0\n";
+    const out = rewriteMetadataName("/t/telo.yaml", text, "NewApp", "new app");
+    expect(out).toContain("name: NewApp");
+    expect(out).toContain("title: new app");
+  });
+
   it("preserves !cel tags in the rest of the document", () => {
     const text =
       "kind: Telo.Application\nmetadata:\n  name: Old\n---\nkind: Http.Server\nmetadata:\n  name: S\nport: !cel \"ports.http\"\n";

@@ -13,17 +13,17 @@ import {
 import { headerOf, itemsOf, presentation, schemaAt, shapeLabels, type Shape, type ShapeReader } from "./model-schema.js";
 import { isChain, type Binding, type Condition } from "./row-binding.js";
 import {
-  boundActionPlaces,
-  boundActionsOf,
-  pendingBoundAction,
-  providedBoundActions,
-  withBoundActions,
-  type BoundActionConfig,
-  type PendingBoundAction,
-} from "./bound-actions.js";
+  mutationCallPlaces,
+  mutationCallsOf,
+  pendingMutationCall,
+  providedMutationCalls,
+  withMutationCalls,
+  type MutationCallConfig,
+  type PendingMutationCall,
+} from "./mutation-calls.js";
 import { answerAtCreation, isPane, paneAssets } from "./pane.js";
 import { isPressable, pressSpec, type PressConfig } from "./press.js";
-import { QUERY_LISTS, queryListOf, queryListRoots, queryOf } from "./query-node.js";
+import { QUERY_LISTS, queryInstanceOf, queryListOf, queryListRoots } from "./query-node.js";
 import { sourceKeys } from "./source-keys.js";
 
 /** A `Ui.Node` as its author wrote it, references already live. */
@@ -91,11 +91,12 @@ export async function resolveNode(
     return { node: placed(provided.node, node), assets: provided.assets };
   }
   if (node.type === "query") {
-    const spec = queryOf(node.query, ctx, where);
+    const queried = queryInstanceOf(node.query, ctx, where);
+    const spec = queried.spec();
     const queryAssets: AssetFile[][] = [];
     const resolvedLists: Record<string, SpecNode[]> = {};
     for (const list of QUERY_LISTS) {
-      const listRoots = queryListRoots(spec, list, roots, reader);
+      const listRoots = queryListRoots(spec, list, roots, reader, queried.formShape());
       const children: SpecNode[] = [];
       for (const [index, child] of queryListOf(node, list).entries()) {
         const resolved = await resolveNode(child, ctx, `${where}.${list}[${index}]`, listRoots);
@@ -142,10 +143,10 @@ export async function resolveNode(
       const menu = deliveredMenu(leaf);
       return menu && { node: menu as SpecNode, assets: [] };
     }
-    const pending = boundActionsOf(leaf) as unknown as PendingBoundAction[];
+    const pending = mutationCallsOf(leaf) as unknown as PendingMutationCall[];
     if (pending.length === 0) return { node: leaf as SpecNode, assets: drawn.assets };
-    const { entries, assets } = await providedBoundActions(pending);
-    return { node: withBoundActions(leaf, entries) as SpecNode, assets: mergeAssets(drawn.assets, ...assets) };
+    const { entries, assets } = await providedMutationCalls(pending);
+    return { node: withMutationCalls(leaf, entries) as SpecNode, assets: mergeAssets(drawn.assets, ...assets) };
   }
   const assets: AssetFile[][] = [];
   const { when, ...container } = withoutAbsent(node);
@@ -273,7 +274,7 @@ export async function withDestinations(node: AuthoredNode, ctx: ResourceContext,
  * container: a `value` or `time` node's `present`, a `list` node's column
  * headers and each column's `present`, a time's `relative`, and each bound
  * action of a `list`, `button` or `markdown` node
- * held to its action ({@link pendingBoundAction}), the action
+ * held to its mutation ({@link pendingMutationCall}), the mutation
  * still the instance for whoever places the node to provide; a `command` node
  * is held to a command one of its roots offers. A member holding nothing is one left out, a bar's region `[]`, a
  * container's `press` null, and
@@ -292,10 +293,11 @@ export function presented(node: AuthoredNode, roots: RootShapes, reader: ShapeRe
     };
   }
   if (own.type === "query") {
-    const spec = queryOf(own.query, reader.ctx, where);
+    const queried = queryInstanceOf(own.query, reader.ctx, where);
+    const spec = queried.spec();
     const listed: AuthoredNode = { ...own };
     for (const list of QUERY_LISTS) {
-      const listRoots = queryListRoots(spec, list, roots, reader);
+      const listRoots = queryListRoots(spec, list, roots, reader, queried.formShape());
       listed[list] = queryListOf(own, list).map((child, index) => presented(child, listRoots, reader, `${where}.${list}[${index}]`));
     }
     return listed;
@@ -401,15 +403,15 @@ function timePresentation(target: Shape | undefined, binding: Binding, where: st
   return present;
 }
 
-/** `node` with each bound action it holds held to its action ({@link pendingBoundAction}). */
+/** `node` with each call it holds held to its mutation ({@link pendingMutationCall}). */
 function withPendingActions(node: AuthoredNode, reader: ShapeReader, where: string): AuthoredNode {
-  const entries = boundActionsOf(node);
+  const entries = mutationCallsOf(node);
   if (entries.length === 0) return node;
-  const places = boundActionPlaces(node);
+  const places = mutationCallPlaces(node);
   const pending = entries.map((entry, index) =>
-    pendingBoundAction(entry as unknown as BoundActionConfig, reader.ctx, where, places[index]),
+    pendingMutationCall(entry as unknown as MutationCallConfig, reader.ctx, where, places[index], "call"),
   );
-  return withBoundActions(node, pending as unknown as Record<string, unknown>[]);
+  return withMutationCalls(node, pending as unknown as Record<string, unknown>[]);
 }
 
 /**

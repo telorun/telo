@@ -331,19 +331,21 @@ h3[data-telo-part="text"] { font-size: var(--telo-font-size-lg); font-style: ita
 [data-telo-part="date-range-preset"][data-state="on"] { border-color: var(--telo-color-accent); color: var(--telo-color-accent); }
 [data-telo-part="date-range-from"], [data-telo-part="date-range-to"] { gap: var(--telo-space-xs); }
 
-/* ---- Actions ---- */
-[data-telo-part="action"] { gap: var(--telo-space-md); }
-[data-telo-part="action-result"], [data-telo-part="row-answer"] {
+/* ---- Mutations ---- */
+[data-telo-part="mutation-result"] {
   padding: var(--telo-space-md);
   border-left: 3px solid var(--telo-color-success);
   background: var(--telo-color-surface);
 }
-[data-telo-part="action-failure"], [data-telo-part="row-failure"] {
+[data-telo-part="mutation-failure"] {
   padding: var(--telo-space-md);
   border-left: 3px solid var(--telo-color-danger);
   background: var(--telo-color-surface);
 }
-[data-telo-part="row-answer"], [data-telo-part="row-failure"] { padding: var(--telo-space-xs) var(--telo-space-sm); }
+[data-telo-part="row-actions"] [data-telo-part="mutation-result"],
+[data-telo-part="row-actions"] [data-telo-part="mutation-failure"] { padding: var(--telo-space-xs) var(--telo-space-sm); }
+[data-telo-part="saving"] { color: var(--telo-color-muted); font-style: italic; }
+[data-telo-part="retry"] { border-color: var(--telo-color-danger); color: var(--telo-color-danger); }
 [data-telo-part="disabled-text"] { color: var(--telo-color-muted); font-style: italic; }
 
 /* ---- Filter bars ---- */

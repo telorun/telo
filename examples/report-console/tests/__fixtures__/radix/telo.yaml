@@ -320,16 +320,17 @@ children:
               - type: text
                 text: Connect your Google account to read timesheets.
                 style: subheading
-              - type: composite
-                ref:
-                  kind: Ui.Action
-                  inputModel: !ref NoInput
-                  outputModel: !ref ConsentLink
-                  request: { target: /api/auth/connect }
+              - type: button
+                action:
+                  mutation:
+                    kind: Ui.Mutation
+                    inputModel: !ref NoInput
+                    outputModel: !ref ConsentLink
+                    url: /api/auth/connect
+                  inputs: {}
                   label: Connect Google
                   onSuccess:
-                    to:
-                      kind: Ui.Navigate
+                    - kind: Ui.Navigate
                       href:
                         path: !cel "result.url"
           - type: stack
@@ -348,20 +349,19 @@ children:
                       - type: value
                         value: !cel "data.email"
                         style: muted
-                      - type: composite
-                        ref:
-                          kind: Ui.Action
-                          inputModel: !ref NoInput
-                          request: { target: /api/auth/signout }
+                      - type: button
+                        action:
+                          mutation:
+                            kind: Ui.Mutation
+                            inputModel: !ref NoInput
+                            url: /api/auth/signout
+                            invalidates: [/api/auth]
+                          inputs: {}
                           label: Sign out
-                          onSuccess: { refreshes: [/api/auth] }
               - type: composite
                 ref:
-                  kind: Ui.Action
-                  inputModel: !ref ReportRequest
-                  outputModel: !ref ReportAnswer
-                  request: { target: /api/generate }
-                  label: Generate
+                  kind: Ui.Form
+                  model: !ref ReportRequest
                   groups:
                     - name: source
                       label: Source
@@ -456,150 +456,171 @@ children:
                   # The chosen sheet and folder are remembered in the browser,
                   # and labelled again from the Drive when the page opens.
                   state: { key: report, store: { kind: Ui.LocalStore }, fields: [spreadsheetId, folder] }
-                  enabled:
-                    at: !cel "values.columns"
-                    matches: { minItems: 1 }
-                    disabledText: Choose at least one column.
                   clearAnswerOn: [spreadsheetId, period, projects, columns]
-                  result:
-                    type: stack
-                    children:
-                      - type: text
-                        style: heading
-                        text:
+                  onSubmit:
+                    mutation:
+                      kind: Ui.Mutation
+                      inputModel: !ref ReportRequest
+                      outputModel: !ref ReportAnswer
+                      url: /api/generate
+                    inputs:
+                      spreadsheetId: !cel "values.spreadsheetId"
+                      folder: !cel "values.folder"
+                      period: !cel "values.period"
+                      projects: !cel "values.projects"
+                      columns: !cel "values.columns"
+                      hoursFormat: !cel "values.hoursFormat"
+                      merge: !cel "values.merge"
+                      chart: !cel "values.chart"
+                    label: Generate
+                    enabled:
+                      at: !cel "values.columns"
+                      matches: { minItems: 1 }
+                      disabledText: Choose at least one column.
+                    result:
+                      type: stack
+                      children:
+                        - type: text
+                          style: heading
                           text:
-                            plural: count
-                            cases:
-                              one: "{$count} project with logged time, {$period}"
-                              other: "{$count} projects with logged time, {$period}"
-                          values:
-                            count: !cel "result.projectsInPeriod"
-                            period: !cel "result.period"
-                        shown:
-                          at: !cel "result.projectsInPeriod"
-                          matches: { minimum: 1 }
-                      - type: text
-                        style: muted
-                        text:
+                            text:
+                              plural: count
+                              cases:
+                                one: "{$count} project with logged time, {$period}"
+                                other: "{$count} projects with logged time, {$period}"
+                            values:
+                              count: !cel "result.projectsInPeriod"
+                              period: !cel "result.period"
+                          shown:
+                            at: !cel "result.projectsInPeriod"
+                            matches: { minimum: 1 }
+                        - type: text
+                          style: muted
                           text:
-                            plural: count
-                            cases:
-                              one: "{$count} chosen project has no time in the period and was skipped."
-                              other: "{$count} chosen projects have no time in the period and were skipped."
-                          values:
-                            count: !cel "result.skipped"
-                        shown:
-                          at: !cel "result.skipped"
-                          matches: { minimum: 1 }
-                      # Two empty states: nothing logged at all, or files
-                      # expected and none produced.
-                      - type: text
-                        text: No project has logged time in this period.
-                        shown:
-                          at: !cel "result.projectsInPeriod"
-                          matches: { const: 0 }
-                      - type: text
-                        text: Time was logged, but no file was produced.
-                        shown:
-                          at: !cel "result"
-                          matches: { properties: { files: { maxItems: 0 }, projectsInPeriod: { minimum: 1 } } }
-                      - type: box
-                        style: danger
-                        shown:
-                          at: !cel "result.unpriced"
-                          matches: { minItems: 1 }
-                        children:
-                          - type: list
-                            heading: Hours without a rate
-                            rows: !cel "result.unpriced"
-                            columns:
-                              - value: !cel "row.person"
-                              - value: !cel "row.hours"
-                      - type: box
-                        style: danger
-                        shown:
-                          at: !cel "result.unassigned"
-                          matches: { minItems: 1 }
-                        children:
-                          - type: list
-                            heading: Hours on no project
-                            rows: !cel "result.unassigned"
-                            columns:
-                              - value: !cel "row.task"
-                              - value: !cel "row.hours"
-                      - type: box
-                        style: danger
-                        shown:
-                          at: !cel "result.noCurrency"
-                          matches: { minItems: 1 }
-                        children:
-                          - type: list
-                            heading: Projects with no currency
-                            rows: !cel "result.noCurrency"
-                            columns:
-                              - value: !cel "row.project"
-                      - type: value
-                        value: !cel "result.combined"
-                        text: Download all as one file
-                        shown:
-                          at: !cel "result"
-                          matches: { required: [combined] }
-                      - type: value
-                        value: !cel "result.chart"
-                        text: Download the chart
-                        shown:
-                          at: !cel "result"
-                          matches: { required: [chart] }
-                      - type: list
-                        heading: Files
-                        rows: !cel "result.files"
-                        shown:
-                          at: !cel "result.files"
-                          matches: { minItems: 1 }
-                        columns:
-                          - value: !cel "row.project"
-                          - value: !cel "row.email"
-                          - value: !cel "row.hours"
-                          - value: !cel "row.amount"
-                            shown:
-                              at: !cel "result.kind"
-                              matches: { const: billing }
-                          - value: !cel "row.currency"
-                            shown:
-                              at: !cel "result.kind"
-                              matches: { const: billing }
-                          - value: !cel "row.pdf"
-                        rowActions:
-                          # A draft needs the project's address; its link is
-                          # drawn in place of the button.
-                          - action:
-                              kind: Ui.Action
-                              inputModel: !ref DraftRequest
-                              outputModel: !ref DraftAnswer
-                              request: { target: /api/draft }
+                            text:
+                              plural: count
+                              cases:
+                                one: "{$count} chosen project has no time in the period and was skipped."
+                                other: "{$count} chosen projects have no time in the period and were skipped."
+                            values:
+                              count: !cel "result.skipped"
+                          shown:
+                            at: !cel "result.skipped"
+                            matches: { minimum: 1 }
+                        # Two empty states: nothing logged at all, or files
+                        # expected and none produced.
+                        - type: text
+                          text: No project has logged time in this period.
+                          shown:
+                            at: !cel "result.projectsInPeriod"
+                            matches: { const: 0 }
+                        - type: text
+                          text: Time was logged, but no file was produced.
+                          shown:
+                            at: !cel "result"
+                            matches: { properties: { files: { maxItems: 0 }, projectsInPeriod: { minimum: 1 } } }
+                        - type: box
+                          style: danger
+                          shown:
+                            at: !cel "result.unpriced"
+                            matches: { minItems: 1 }
+                          children:
+                            - type: list
+                              heading: Hours without a rate
+                              rows: !cel "result.unpriced"
+                              columns:
+                                - value: !cel "row.person"
+                                - value: !cel "row.hours"
+                        - type: box
+                          style: danger
+                          shown:
+                            at: !cel "result.unassigned"
+                            matches: { minItems: 1 }
+                          children:
+                            - type: list
+                              heading: Hours on no project
+                              rows: !cel "result.unassigned"
+                              columns:
+                                - value: !cel "row.task"
+                                - value: !cel "row.hours"
+                        - type: box
+                          style: danger
+                          shown:
+                            at: !cel "result.noCurrency"
+                            matches: { minItems: 1 }
+                          children:
+                            - type: list
+                              heading: Projects with no currency
+                              rows: !cel "result.noCurrency"
+                              columns:
+                                - value: !cel "row.project"
+                        - type: value
+                          value: !cel "result.combined"
+                          text: Download all as one file
+                          shown:
+                            at: !cel "result"
+                            matches: { required: [combined] }
+                        - type: value
+                          value: !cel "result.chart"
+                          text: Download the chart
+                          shown:
+                            at: !cel "result"
+                            matches: { required: [chart] }
+                        - type: list
+                          heading: Files
+                          rows: !cel "result.files"
+                          shown:
+                            at: !cel "result.files"
+                            matches: { minItems: 1 }
+                          columns:
+                            - value: !cel "row.project"
+                            - value: !cel "row.email"
+                            - value: !cel "row.hours"
+                            - value: !cel "row.amount"
+                              shown:
+                                at: !cel "result.kind"
+                                matches: { const: billing }
+                            - value: !cel "row.currency"
+                              shown:
+                                at: !cel "result.kind"
+                                matches: { const: billing }
+                            - value: !cel "row.pdf"
+                          rowActions:
+                            # A draft needs the project's address; its link is
+                            # drawn in place of the button.
+                            - mutation:
+                                kind: Ui.Mutation
+                                inputModel: !ref DraftRequest
+                                outputModel: !ref DraftAnswer
+                                url: /api/draft
+                              inputs:
+                                email: !cel "row.email"
+                                pdf: !cel "row.pdf"
+                                project: !cel "row.project"
                               label: Draft e-mail
                               result:
                                 type: value
                                 value: !cel "result.url"
                                 text: Open the draft
-                            inputs:
-                              email: !cel "row.email"
-                              pdf: !cel "row.pdf"
-                              project: !cel "row.project"
-                            enabled:
-                              at: !cel "row.email"
-                              matches: { type: string, minLength: 1 }
-                              disabledText: The project has no billing e-mail.
-                          # An upload reads the folder chosen now, at the
-                          # press, and the period the report was made for;
-                          # presses on several rows go one at a time.
-                          - action:
-                              kind: Ui.Action
-                              inputModel: !ref UploadRequest
-                              outputModel: !ref UploadAnswer
-                              request: { target: /api/upload }
+                              enabled:
+                                at: !cel "row.email"
+                                matches: { type: string, minLength: 1 }
+                                disabledText: The project has no billing e-mail.
+                            # An upload reads the folder chosen now, at the
+                            # press, and the period the report was made for;
+                            # presses on several rows go one at a time.
+                            - mutation:
+                                kind: Ui.Mutation
+                                inputModel: !ref UploadRequest
+                                outputModel: !ref UploadAnswer
+                                url: /api/upload
+                                concurrency: serial
+                              inputs:
+                                pdf: !cel "row.pdf"
+                                folder: !cel "values.folder"
+                                from: !cel "input.period.from"
+                                to: !cel "input.period.to"
                               label: Upload
-                              concurrency: serial
                               result:
                                 type: value
                                 value: !cel "result.link"
@@ -607,43 +628,38 @@ children:
                                   text: Uploaded to {$target}
                                   values:
                                     target: !cel "result.target"
-                            inputs:
-                              pdf: !cel "row.pdf"
-                              folder: !cel "values.folder"
-                              from: !cel "input.period.from"
-                              to: !cel "input.period.to"
-                            enabled:
-                              at: !cel "values.folder"
-                              matches: { minLength: 1 }
-                              disabledText: Choose an upload folder first.
-                      - type: value
-                        value: !cel "result.projectsLink"
-                        text: See the sheet's projects
-                  failure:
-                    type: stack
-                    style: danger
-                    children:
-                      - type: text
-                        style: strong
-                        text:
-                          text: HTTP {$status} · {$code}
-                          values:
-                            status: !cel "error.status"
-                            code: !cel "error.code"
-                        shown:
-                          at: !cel "error"
-                          matches: { required: [status] }
-                      - type: text
-                        style: strong
-                        text:
-                          text: No answer · {$code}
-                          values:
-                            code: !cel "error.code"
-                        shown:
-                          at: !cel "error"
-                          matches: { not: { required: [status] } }
-                      - type: value
-                        value: !cel "error.message"
+                              enabled:
+                                at: !cel "values.folder"
+                                matches: { minLength: 1 }
+                                disabledText: Choose an upload folder first.
+                        - type: value
+                          value: !cel "result.projectsLink"
+                          text: See the sheet's projects
+                    failure:
+                      type: stack
+                      style: danger
+                      children:
+                        - type: text
+                          style: strong
+                          text:
+                            text: HTTP {$status} · {$code}
+                            values:
+                              status: !cel "error.status"
+                              code: !cel "error.code"
+                          shown:
+                            at: !cel "error"
+                            matches: { required: [status] }
+                        - type: text
+                          style: strong
+                          text:
+                            text: No answer · {$code}
+                            values:
+                              code: !cel "error.code"
+                          shown:
+                            at: !cel "error"
+                            matches: { not: { required: [status] } }
+                        - type: value
+                          value: !cel "error.message"
     loading:
       - { type: text, text: Checking your sign-in…, style: muted }
 ---
@@ -684,22 +700,22 @@ children:
                   - value: !cel "row.name"
                   - value: !cel "row.email"
               rowActions:
-                - action:
-                    kind: Ui.Action
+                - mutation:
+                    kind: Ui.Mutation
                     inputModel: !ref RemindRequest
                     outputModel: !ref RemindAnswer
-                    request: { target: /api/projects/remind }
-                    label: Remind
-                    result:
-                      type: text
-                      text:
-                        text: Reminder sent to {$address}
-                        values:
-                          address: !cel "result.sentTo"
+                    url: /api/projects/remind
                   inputs:
                     projectId: !cel "row.id"
                     email: !cel "row.email"
                     sheet: !cel "query.sheet"
+                  label: Remind
+                  result:
+                    type: text
+                    text:
+                      text: Reminder sent to {$address}
+                      values:
+                        address: !cel "result.sentTo"
                   confirm: Remind the client to log this month's time?
                   enabled:
                     at: !cel "row.email"

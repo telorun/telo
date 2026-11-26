@@ -768,7 +768,7 @@ export class SessionLifecycle {
         if (run.abort.signal.aborted) return;
         this.addressesOf.set(run, addresses);
         void relayDebugStream({
-          url: addresses.inspect.url,
+          inspect: addresses.inspect,
           signal: run.abort.signal,
           onFrame: (frame) => {
             entry.attribution?.frame(channel.name, frame);

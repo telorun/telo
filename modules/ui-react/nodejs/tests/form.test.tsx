@@ -263,7 +263,7 @@ describe("a form", () => {
 
   it("opens an edit with the record's lists in their controls", async () => {
     const row = { id: 7, formats: ["csv"], sizes: [2, 4] };
-    const form = listForm({ record: { basePath: "/api/lists", key: { root: "params", path: ["id"] } }, initialValues: { root: "data", path: [] } });
+    const form = listForm({ record: { basePath: "/api/lists", key: { root: "params", path: ["id"] }, answer: listSchema }, initialValues: { root: "data", path: [] } });
     rendered = await render({
       path: "/lists/7",
       collections: { "/api/lists": [row] },

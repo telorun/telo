@@ -1,0 +1,492 @@
+kind: Telo.Application
+metadata:
+  name: UiFormTest
+  version: 1.0.0
+  description: |
+    A form that writes through a mutation provides its node from its model: a
+    field per property a control can enter — a scalar or a list of scalars,
+    never an object or a list of objects — unless fields are listed, and its
+    `onSubmit` and `autosave` as the call that runs them: the mutation, the
+    inputs bound from `values`, the label (the `save` text when none is
+    written), the condition and the answer trees, with every `value` and `list`
+    node presented from the root it reads (`result` from the answer, `input`
+    and `values` from the models) and the failure tree filled with the error's
+    code and message. An `autosave` carries its pause in milliseconds, 300 when
+    none is written, and a form without a collection carries `record: null`,
+    with the effects after a submit a list of wire effects, `[]` when none. A
+    form placed on a page is the page's node. A listing, and a list inside an
+    answer, carry each row action as a call: its mutation, the row's inputs,
+    its label, its question only when one is asked, its condition only when one
+    is written, its prompt — the entries it asks for — and its effects; a
+    listing carries the query parameters it declares and the form it follows.
+imports:
+  Ui: ../
+  DataModel: ../../data-model
+  Probe: ./__fixtures__/probe
+  Assert: ../../assert
+targets:
+  - !ref main
+---
+kind: Telo.JsonSchema
+metadata: { name: ReportRequest }
+schema:
+  type: object
+  required: [month]
+  properties:
+    month: { type: string, title: Month }
+    copies: { type: integer }
+    formats: { type: array, title: Formats, items: { enum: [pdf, csv] } }
+    recipients: { type: [array, "null"], items: { type: string } }
+    options: { type: object, properties: { compact: { type: boolean } } }
+    pages: { type: array, items: { type: object } }
+---
+kind: Telo.JsonSchema
+metadata: { name: ReportAnswer }
+schema:
+  type: object
+  properties:
+    location: { type: string }
+    summary: { type: object, properties: { total: { type: integer, title: Total } } }
+    files:
+      type: array
+      items:
+        type: object
+        properties:
+          name: { type: string, title: File }
+          url: { type: string, format: uri-reference }
+---
+kind: Ui.Form
+metadata: { name: generate }
+model: !ref ReportRequest
+onSubmit:
+  mutation:
+    kind: Ui.Mutation
+    inputModel: !ref ReportRequest
+    outputModel: !ref ReportAnswer
+    url: /api/reports
+    invalidates:
+      - /api/reports
+      - /api/archive
+      - { path: "/api/months/{month}/**", pathParams: { month: !cel "input.month" } }
+    concurrency: serial
+  inputs: { month: !cel "values.month" }
+  label: Generate
+  result:
+    type: stack
+    children:
+      - type: list
+        heading: Files
+        rows: !cel "result.files"
+        columns:
+          - value: !cel "row.name"
+          - header: Link
+            value: !cel "row.url"
+          - value: !cel "result.summary.total"
+          - { header: Kind, value: report }
+        rowActions:
+          - mutation: !ref archiveFile
+            inputs:
+              name: !cel "row.name"
+              month: !cel "input.month"
+            label: Archive
+            onSuccess:
+              - { kind: Ui.Navigate, href: /files }
+            enabled:
+              at: !cel "row.url"
+              matches: { type: string }
+              disabledText: Not stored yet.
+      - type: value
+        value: !cel "values.month"
+  failure:
+    type: value
+    value: !cel "error.message"
+onSuccess:
+  - { kind: Ui.Navigate, href: { path: !cel "result.location" } }
+clearAnswerOn: [month, formats]
+---
+kind: Ui.Form
+metadata: { name: chosen }
+model: !ref ReportRequest
+fields: [formats, month]
+onSubmit:
+  mutation: { kind: Ui.Mutation, inputModel: !ref ReportRequest, url: /api/reports }
+  inputs: { month: !cel "values.month" }
+  enabled:
+    at: !cel "values.month"
+    matches: { type: string, minLength: 3 }
+    disabledText: Enter a month first.
+  confirm: Send it?
+---
+kind: Telo.JsonSchema
+metadata: { name: Draft }
+schema: { type: object, properties: { title: { type: string, title: Title } } }
+---
+kind: Ui.Mutation
+metadata: { name: saveDraft }
+inputModel:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [id], properties: { id: { type: string }, title: { type: string } } }
+method: PUT
+url: { path: "/api/posts/{id}", pathParams: { id: !cel "input.id" } }
+---
+kind: Ui.Form
+metadata: { name: draft }
+model: !ref Draft
+autosave:
+  mutation: !ref saveDraft
+  inputs: { id: "1", title: !cel "values.title" }
+---
+kind: Ui.Form
+metadata: { name: slowDraft }
+model: !ref Draft
+autosave:
+  mutation: !ref saveDraft
+  inputs: { id: "1", title: !cel "values.title" }
+  debounce: 1s
+  result: { type: text, text: Saved }
+---
+kind: Ui.Mutation
+metadata: { name: archiveFile }
+inputModel:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [name]
+    properties: { name: { type: string }, month: { type: string } }
+url: /api/archive
+---
+kind: Ui.Form
+metadata: { name: requestForm }
+model: !ref ReportRequest
+record:
+  presentation:
+    kind: Ui.CollectionPresentation
+    source:
+      kind: Ui.CollectionSource
+      basePath: /api/requests
+      collection:
+        kind: DataModel.Collection
+        schemas: { create: { kind: Telo.JsonSchema, schema: { type: object } } }
+        model: { kind: Telo.JsonSchema, schema: { type: object, required: [id], properties: { id: { type: string } } } }
+        query: { filters: [], sort: [] }
+---
+kind: Ui.View
+metadata: { name: page }
+content:
+  type: stack
+  children:
+    - { type: composite, ref: !ref generate, style: strong }
+---
+kind: Telo.JsonSchema
+metadata: { name: Todo }
+schema:
+  type: object
+  required: [id]
+  properties: { id: { type: integer }, name: { type: string } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Archive }
+schema:
+  type: object
+  additionalProperties: false
+  required: [id]
+  properties:
+    id: { type: integer }
+    status: { type: string }
+    reason: { type: string, title: Reason }
+---
+kind: Ui.Mutation
+metadata: { name: archive }
+inputModel: !ref Archive
+url: /api/todos/archive
+---
+kind: Ui.Listing
+metadata: { name: todos }
+form: !ref searchForm
+model: !ref Todo
+presentation:
+  kind: Ui.CollectionPresentation
+  source:
+    kind: Ui.CollectionSource
+    basePath: /api/todos
+    collection:
+      kind: DataModel.Collection
+      schemas: { create: { kind: Telo.JsonSchema, schema: { type: object } } }
+      model: !ref Todo
+      query: { filters: [], sort: [] }
+query: { status: { type: string } }
+rowActions:
+  - mutation: !ref archive
+    inputs:
+      id: !cel "row.id"
+      status: !cel "query.status"
+    label: Archive
+    enabled:
+      at: !cel "row.name"
+      matches: { minLength: 1 }
+      disabledText: Name it first.
+  - mutation:
+      kind: Ui.Mutation
+      inputModel:
+        kind: Telo.JsonSchema
+        schema: { type: object, required: [name], properties: { name: { type: string } } }
+      url: /api/todos/rename
+    inputs:
+      name: !cel "row.name"
+    label: Rename
+    confirm: Rename it?
+  # Asks for the entries the row does not bind: `status` and `reason`.
+  - mutation: !ref archive
+    inputs:
+      id: !cel "row.id"
+      status: !cel "prompt.status"
+      reason: !cel "prompt.reason"
+    label: Archive
+    prompt:
+      kind: Ui.Prompt
+      model:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties: { status: { type: string }, reason: { type: string, title: Reason } }
+---
+kind: Ui.Form
+metadata: { name: searchForm }
+model: { kind: Telo.JsonSchema, schema: { type: object, properties: { q: { type: string, title: Search } } } }
+fields: [q]
+---
+kind: Ui.Query
+metadata: { name: searchQuery }
+form: !ref searchForm
+model: { kind: Telo.JsonSchema, schema: { type: object, properties: { hits: { type: integer } } } }
+url: /api/search
+---
+kind: Ui.Query
+metadata: { name: plainQuery }
+model: { kind: Telo.JsonSchema, schema: { type: object, properties: { hits: { type: integer } } } }
+url: /api/search
+---
+kind: Telo.Sequence
+metadata: { name: main }
+steps:
+  - name: generate
+    invoke: { kind: Probe.Read, source: !ref generate }
+  - name: chosen
+    invoke: { kind: Probe.Read, source: !ref chosen }
+  - name: draft
+    invoke: { kind: Probe.Read, source: !ref draft }
+  - name: slowDraft
+    invoke: { kind: Probe.Read, source: !ref slowDraft }
+  - name: form
+    invoke: { kind: Probe.Read, source: !ref requestForm }
+  - name: page
+    invoke: { kind: Probe.Read, source: !ref page }
+  - name: todos
+    invoke: { kind: Probe.Read, source: !ref todos }
+  - name: searchForm
+    invoke: { kind: Probe.Read, source: !ref searchForm }
+  - name: searchQuery
+    invoke: { kind: Probe.Read, source: !ref searchQuery }
+  - name: plainQuery
+    invoke: { kind: Probe.Read, source: !ref plainQuery }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        generate: !cel "steps.generate.result.node"
+        chosen: !cel "steps.chosen.result.node.fields"
+        chosenSubmit: !cel "{'label': steps.chosen.result.node.onSubmit.label, 'confirm': steps.chosen.result.node.onSubmit.confirm, 'enabled': steps.chosen.result.node.onSubmit.enabled, 'result': has(steps.chosen.result.node.onSubmit.result)}"
+        draft: !cel "{'record': steps.draft.result.node.record, 'submit': steps.draft.result.node.onSubmit, 'debounce': steps.draft.result.node.autosave.debounce, 'method': steps.draft.result.node.autosave.mutation.method, 'inputs': steps.draft.result.node.autosave.inputs, 'result': has(steps.draft.result.node.autosave.result), 'onSuccess': steps.draft.result.node.onSuccess, 'clear': steps.draft.result.node.clearAnswerOn}"
+        slowDraft: !cel "{'debounce': steps.slowDraft.result.node.autosave.debounce, 'result': steps.slowDraft.result.node.autosave.result}"
+        form: !cel "{'record': steps.form.result.node.record, 'onSubmit': steps.form.result.node.onSubmit, 'autosave': steps.form.result.node.autosave, 'onSuccess': steps.form.result.node.onSuccess, 'clear': steps.form.result.node.clearAnswerOn}"
+        onPage: !cel "steps.page.result.node.children.map(c, {'type': c.type, 'style': c.style})"
+        query: !cel "steps.todos.result.node.query"
+        rowActions: !cel "steps.todos.result.node.rowActions.map(r, {'path': r.mutation.url.path.value, 'label': r.label, 'inputs': r.inputs, 'confirm': has(r.confirm) ? r.confirm : null, 'prompt': r.prompt, 'enabled': has(r.enabled) ? r.enabled : null})"
+        followed: !cel "steps.todos.result.node.form"
+        formId: !cel "steps.searchForm.result.node.id"
+        queryForm: !cel "steps.searchQuery.result.form"
+        plainQueryForm: !cel "steps.plainQuery.result.form"
+      expected:
+        generate:
+          type: form
+          id: UiFormTest/generate
+          fill: false
+          schema:
+            type: object
+            required: [month]
+            properties:
+              month: { type: string, title: Month }
+              copies: { type: integer }
+              formats: { type: array, title: Formats, items: { enum: [pdf, csv] } }
+              recipients: { type: [array, "null"], items: { type: string } }
+              options: { type: object, properties: { compact: { type: boolean } } }
+              pages: { type: array, items: { type: object } }
+          record: null
+          initialValues: null
+          unsaved: confirm
+          afterSubmit: close
+          fields:
+            - { type: input, property: month, label: { text: Month, context: null, lang: und, computed: false }, control: auto, description: null, labels: [] }
+            - { type: input, property: copies, label: { text: copies, context: null, lang: und, computed: false }, control: auto, description: null, labels: [] }
+            - { type: input, property: formats, label: { text: Formats, context: null, lang: und, computed: false }, control: auto, description: null, labels: [{ value: pdf, label: { text: pdf, context: null, lang: und, computed: false } }, { value: csv, label: { text: csv, context: null, lang: und, computed: false } }] }
+            - { type: input, property: recipients, label: { text: recipients, context: null, lang: und, computed: false }, control: auto, description: null, labels: [] }
+          groups: []
+          state: { address: false, store: { type: memory }, fields: [month, copies, formats, recipients] }
+          onSubmit:
+            mutation:
+              id: UiFormTest/generate/onSubmit/mutation
+              schema:
+                type: object
+                required: [month]
+                properties:
+                  month: { type: string, title: Month }
+                  copies: { type: integer }
+                  formats: { type: array, title: Formats, items: { enum: [pdf, csv] } }
+                  recipients: { type: [array, "null"], items: { type: string } }
+                  options: { type: object, properties: { compact: { type: boolean } } }
+                  pages: { type: array, items: { type: object } }
+              answer:
+                type: object
+                properties:
+                  location: { type: string }
+                  summary: { type: object, properties: { total: { type: integer, title: Total } } }
+                  files:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string, title: File }
+                        url: { type: string, format: uri-reference }
+              method: POST
+              url: { path: { value: /api/reports }, pathParams: {}, queryParams: {} }
+              consumed: []
+              invalidates:
+                - { path: { value: /api/reports }, pathParams: {}, queryParams: {} }
+                - { path: { value: /api/archive }, pathParams: {}, queryParams: {} }
+                - { path: { value: "/api/months/{month}/**" }, pathParams: { month: { root: input, path: [month] } }, queryParams: {} }
+              concurrency: serial
+            inputs: { month: { root: values, path: [month] } }
+            label: { text: Generate, context: null, lang: und, computed: false }
+            result:
+              type: stack
+              fill: false
+              press: null
+              children:
+                - type: list
+                  fill: false
+                  rowActionsDisplay: auto
+                  heading: { text: Files, context: null, lang: und, computed: false }
+                  rows: { root: result, path: [files] }
+                  columns:
+                    - { header: { text: File, context: null, lang: und, computed: false }, value: { root: row, path: [name] }, present: { type: string }, labels: [] }
+                    - { header: { text: Link, context: null, lang: und, computed: false }, value: { root: row, path: [url] }, present: { type: string, format: uri-reference }, labels: [] }
+                    - { header: { text: Total, context: null, lang: und, computed: false }, value: { root: result, path: [summary, total] }, present: { type: integer }, labels: [] }
+                    - { header: { text: Kind, context: null, lang: und, computed: false }, value: { value: report }, labels: [] }
+                  rowActions:
+                    - mutation:
+                        id: UiFormTest/archiveFile
+                        schema:
+                          type: object
+                          required: [name]
+                          properties: { name: { type: string }, month: { type: string } }
+                        method: POST
+                        url: { path: { value: /api/archive }, pathParams: {}, queryParams: {} }
+                        consumed: []
+                        invalidates: []
+                        concurrency: parallel
+                      label: { text: Archive, context: null, lang: und, computed: false }
+                      prompt: null
+                      onSuccess: [{ type: navigate, href: { path: { value: /files }, pathParams: {}, queryParams: {} } }]
+                      failure:
+                        type: stack
+                        fill: false
+                        press: null
+                        style: danger
+                        children:
+                          - { type: value, fill: false, value: { root: error, path: [code] }, present: { type: string }, style: strong, labels: [] }
+                          - { type: value, fill: false, value: { root: error, path: [message] }, present: { type: string }, labels: [] }
+                      inputs: { name: { root: row, path: [name] }, month: { root: input, path: [month] } }
+                      enabled:
+                        at: { root: row, path: [url] }
+                        matches: { type: string }
+                        disabledText: { text: Not stored yet., context: null, lang: und, computed: false }
+                - type: value
+                  fill: false
+                  value: { root: values, path: [month] }
+                  present: { type: string }
+                  labels: []
+            failure:
+              type: value
+              fill: false
+              value: { root: error, path: [message] }
+              present: { type: string }
+              labels: []
+          autosave: null
+          onSuccess:
+            - { type: navigate, href: { path: { root: result, path: [location] }, pathParams: {}, queryParams: {} } }
+          clearAnswerOn: [month, formats]
+        chosen:
+          - { type: input, property: formats, label: { text: Formats, context: null, lang: und, computed: false }, control: auto, description: null, labels: [{ value: pdf, label: { text: pdf, context: null, lang: und, computed: false } }, { value: csv, label: { text: csv, context: null, lang: und, computed: false } }] }
+          - { type: input, property: month, label: { text: Month, context: null, lang: und, computed: false }, control: auto, description: null, labels: [] }
+        chosenSubmit:
+          label: { set: Ui.Translations, key: save }
+          confirm: { text: Send it?, context: null, lang: und, computed: false }
+          enabled:
+            at: { root: values, path: [month] }
+            matches: { type: string, minLength: 3 }
+            disabledText: { text: Enter a month first., context: null, lang: und, computed: false }
+          result: false
+        draft:
+          record: null
+          submit: null
+          debounce: 300
+          method: PUT
+          inputs: { id: { value: "1" }, title: { root: values, path: [title] } }
+          result: false
+          onSuccess: []
+          clear: []
+        slowDraft:
+          debounce: 1000
+          result: { type: text, fill: false, text: { text: Saved, context: null, lang: und, computed: false } }
+        form:
+          record: { basePath: /api/requests, key: null, answer: { type: object, required: [id], properties: { id: { type: string } } } }
+          onSubmit: null
+          autosave: null
+          onSuccess: []
+          clear: []
+        followed: UiFormTest/searchForm
+        formId: UiFormTest/searchForm
+        queryForm: UiFormTest/searchForm
+        plainQueryForm: null
+        onPage:
+          - { type: form, style: strong }
+        query: { status: { type: string } }
+        rowActions:
+          - path: /api/todos/archive
+            label: { text: Archive, context: null, lang: und, computed: false }
+            inputs: { id: { root: row, path: [id] }, status: { root: query, path: [status] } }
+            confirm: null
+            prompt: null
+            enabled:
+              at: { root: row, path: [name] }
+              matches: { minLength: 1 }
+              disabledText: { text: Name it first., context: null, lang: und, computed: false }
+          - path: /api/todos/rename
+            label: { text: Rename, context: null, lang: und, computed: false }
+            inputs: { name: { root: row, path: [name] } }
+            confirm: { text: Rename it?, context: null, lang: und, computed: false }
+            prompt: null
+            enabled: null
+          - path: /api/todos/archive
+            label: { text: Archive, context: null, lang: und, computed: false }
+            inputs: { id: { root: row, path: [id] }, status: { root: prompt, path: [status] }, reason: { root: prompt, path: [reason] } }
+            confirm: null
+            prompt:
+              schema:
+                type: object
+                properties: { status: { type: string }, reason: { type: string, title: Reason } }
+              groups: []
+              fields:
+                - { type: input, property: status, label: { text: status, context: null, lang: und, computed: false }, control: auto, description: null, labels: [] }
+                - { type: input, property: reason, label: { text: Reason, context: null, lang: und, computed: false }, control: auto, description: null, labels: [] }
+            enabled: null

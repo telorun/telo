@@ -48,7 +48,9 @@ Two annotations work together:
   whether the author gave it inline or by `!ref`. The path after the reference
   may continue past further references: `x-telo-context-ref-from:
   "source/collection/model"` types `row` from the model of the collection the
-  sibling `source` reads, each entry of a map from its own `source`.
+  sibling `source` reads, each entry of a map from its own `source`. A path may
+  start with data segments before its first reference, and a list of paths is
+  read as ordered alternatives — see Referrer-typed bindings.
 
 It is the third value of `x-telo-eval`, beside `compile` and `runtime`, and it
 wins over a provider's implicit compile-eval: the field is left out of what the
@@ -65,7 +67,7 @@ list whose region binds `row` may start at `row`, and the same chain in a node
 outside every such list may not.
 
 A JSON Pointer `$ref` reads a member as if it were written in place: a member
-of a named shape (`$ref: "telo://Self/BoundAction#/properties/inputs"`) or of a
+of a named shape (`$ref: "telo://Self/MutationCall#/properties/inputs"`) or of a
 local `$defs` entry (`$ref: "#/$defs/Column/properties/href"`) keeps every
 annotation it declares — its eval mode, its regions, a reference slot with its
 `inputs` and `completedWhen` siblings, its texts. That is how one closed shape's

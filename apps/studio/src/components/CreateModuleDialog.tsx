@@ -1,5 +1,5 @@
-import { checkName } from "@telorun/analyzer";
 import { useEffect, useState } from "react";
+import { loadCatalog, ROUTER_SPEAKS } from "@telorun/language-host";
 import { localCatalogCache } from "../language/language-storage";
 import { AlertCircle, Boxes, Check, FileText, Loader2, RotateCw } from "lucide-react";
 import {
@@ -15,11 +15,12 @@ import { Button } from "./ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog";
 import { Input } from "./ui/input";
-import { nameViolationMessage } from "./name-violation-message";
+import { moduleIdentityFromTitle } from "./module-name-from-title";
 
 interface CreateModuleDialogProps {
   open: boolean;
@@ -35,7 +36,7 @@ interface CreateModuleDialogProps {
     kind: ModuleKind,
     name: string,
     selection: NewModuleSelection,
-    opts?: { overwrite?: boolean },
+    opts?: { overwrite?: boolean; title?: string },
   ) => Promise<void>;
 }
 
@@ -71,6 +72,7 @@ export function CreateModuleDialog({
 
   const category = categoryFor(kind);
   const kindLabel = kind === "Application" ? "application" : "library";
+  const identity = moduleIdentityFromTitle(name, kindLabel);
 
   // A string, so a new object for the same version does not reload the gallery.
   const versionKey = JSON.stringify(galleryVersion);
@@ -83,21 +85,45 @@ export function CreateModuleDialog({
     setCatalogError(null);
     setGalleryLabel(null);
     setGalleryBaseUrl(null);
-    localCatalogCache()
-      .read()
-      .then((stored) =>
-        loadStarterGallery({
-          fixedBaseUrl,
-          version: JSON.parse(versionKey) as GalleryVersion,
-          catalogVersions: stored?.offered.map((entry) => entry.version) ?? [],
-        }),
-      )
-      .then((gallery) => {
-        if (cancelled) return;
+    const cache = localCatalogCache();
+    const readRegistry = () =>
+      loadCatalog({ speaks: ROUTER_SPEAKS, cache, warn: (message) => console.warn(message) });
+    const showGallery = async (
+      reading: Awaited<ReturnType<typeof readRegistry>> | null,
+    ): Promise<void> => {
+      const gallery = await loadStarterGallery({
+        fixedBaseUrl,
+        version: JSON.parse(versionKey) as GalleryVersion,
+        catalogVersions: reading?.offered.map((entry) => entry.version) ?? [],
+        catalogFailure: reading?.failure,
+      });
+      if (!cancelled) {
         setStarters(gallery.catalog.starters.filter((s) => s.category === category));
         setGalleryBaseUrl(gallery.baseUrl);
         setGalleryLabel(gallery.version ? `telo ${gallery.version}` : "a custom source");
-      })
+      }
+    };
+    const versionsOf = (reading: { offered: { version: string }[] } | null | undefined) =>
+      reading?.offered.map((entry) => entry.version).join(",") ?? "";
+
+    // A cached catalog is used at once and the registry refreshes it in the
+    // background; only with nothing cached (or on Retry) is the registry awaited.
+    const run = async () => {
+      const cached = fixedBaseUrl !== undefined || reloadKey > 0 ? undefined : await cache.read();
+      if (!cached) {
+        await showGallery(fixedBaseUrl !== undefined ? null : await readRegistry());
+        return;
+      }
+      await showGallery({ ...cached, source: "cache" });
+      if (!cancelled) setLoadingCatalog(false);
+      const refreshed = await readRegistry();
+      if (cancelled || versionsOf(refreshed) === versionsOf(cached)) return;
+      // The cached gallery already shown stays when the refresh cannot be drawn.
+      await showGallery(refreshed).catch((err) =>
+        console.warn(`telo: the starter gallery could not be refreshed: ${err instanceof Error ? err.message : String(err)}`),
+      );
+    };
+    run()
       .catch((err) => {
         if (cancelled) return;
         setStarters([]);
@@ -133,27 +159,23 @@ export function CreateModuleDialog({
   }
 
   async function submit(force: boolean) {
-    const trimmed = name.trim();
-    if (!trimmed) {
+    if (!name.trim()) {
       setNameError("Name is required");
       return;
     }
-    // `metadata.name` is the module's kind prefix, so it is a TYPE-level name:
-    // PascalCase, and a CEL-safe identifier. The analyzer's own rule decides —
-    // so a name this dialog accepts is one `telo check` accepts — and the
-    // wording is this surface's, beside the field. The directory is slugified
-    // from it (`WeatherApi` → `weather-api`), which is why the hyphenated
-    // spelling this used to allow is now rejected at the name rather than
-    // fixed up behind the author's back.
-    const violation = checkName(trimmed, "type", kindLabel);
-    if (violation) {
-      setNameError(nameViolationMessage(violation, "type"));
+    // Any text is accepted: what is not a valid name is saved under one derived
+    // from it, and kept as the module's title.
+    if (!identity) {
+      setNameError("Include at least one letter — like Weather API.");
       return;
     }
     setSubmitting(true);
     setSubmitError(null);
     try {
-      await onCreate(kind, trimmed, selectionFor(selectedId), force ? { overwrite: true } : undefined);
+      await onCreate(kind, identity.name, selectionFor(selectedId), {
+        ...(force ? { overwrite: true } : {}),
+        ...(identity.title !== undefined ? { title: identity.title } : {}),
+      });
       handleOpenChange(false);
     } catch (err) {
       if (err instanceof ModuleExistsError) {
@@ -180,12 +202,19 @@ export function CreateModuleDialog({
       <DialogContent className="sm:max-w-140">
         <DialogHeader>
           <DialogTitle>New {kindLabel}</DialogTitle>
+          <DialogDescription>Name it, then start blank or from a starter.</DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Name</label>
+            <label
+              htmlFor="new-module-name"
+              className="text-xs font-medium text-zinc-600 dark:text-zinc-400"
+            >
+              Name
+            </label>
             <Input
+              id="new-module-name"
               autoFocus
               value={name}
               onChange={(e) => {
@@ -197,13 +226,18 @@ export function CreateModuleDialog({
               onKeyDown={(e) => {
                 if (e.key === "Enter") void submit(false);
               }}
-              placeholder="WeatherApi"
+              placeholder="Weather API"
             />
             {nameError ? (
               <span className="text-xs text-red-500 dark:text-red-400">{nameError}</span>
+            ) : identity?.title !== undefined ? (
+              <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                Saved as <span className="font-medium text-zinc-700 dark:text-zinc-200">{identity.name}</span>,
+                titled “{identity.title}”.
+              </span>
             ) : (
               <span className="text-xs text-zinc-400 dark:text-zinc-500">
-                Start with a capital letter — like WeatherApi.
+                Any name — it is saved as an identifier like WeatherApi.
               </span>
             )}
           </div>

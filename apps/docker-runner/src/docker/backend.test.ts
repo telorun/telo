@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  SUPERVISOR_GENERATION,
   WORKSPACE_MARKER_CONTENTS,
   type AppState,
   type BackendStatus,
@@ -179,6 +180,17 @@ describe.skipIf(NO_LOOPBACK_ALIASES)("a session's containers", () => {
     });
   });
 
+  it("bind each app's debug stream to the container's loopback, reached through that app's supervisor", async () => {
+    const backend = boot();
+    const workload = await backend.create(spec("s1"), recorder().callbacks);
+
+    const worker = await workload.addresses("worker");
+    expect(worker.inspect.listen).toBe("127.0.0.1:9231");
+    (await worker.inspect.connect(new AbortController().signal)).destroy();
+    await expect.poll(() => engine.supervisorOf("worker").forwards).toEqual([9231]);
+    expect(engine.supervisorOf("web").forwards).toEqual([]);
+  });
+
   it("are removed on suspend and created again over the same directory, which goes only with the session", async () => {
     const backend = boot();
     const first = recorder();
@@ -287,13 +299,14 @@ describe.skipIf(NO_LOOPBACK_ALIASES)("adoption at boot", () => {
   it("removes containers whose supervisors speak another generation, whose agent is not the stored one, or that do not run as the session user, keeping the directory", async () => {
     const backend = boot();
     mkdirSync(join(bundleRoot, "s1", "workspace"), { recursive: true });
-    engine.generation = 2;
+    // Generation 1's supervisors: a container an earlier runner build left.
+    engine.generation = 1;
     await earlierContainers("s1");
     expect(await backend.adopt!(spec("s1", { agent: AGENT }), recorder().callbacks)).toBeUndefined();
     expect(engine.names()).toEqual([]);
     expect(existsSync(join(bundleRoot, "s1", "workspace"))).toBe(true);
 
-    engine.generation = 1;
+    engine.generation = SUPERVISOR_GENERATION;
     await earlierContainers("s2", { agent: false });
     expect(await backend.adopt!(spec("s2", { agent: AGENT }), recorder().callbacks)).toBeUndefined();
     expect(engine.names()).toEqual([]);

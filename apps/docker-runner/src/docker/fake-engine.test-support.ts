@@ -2,6 +2,7 @@ import { createServer, type Server } from "node:http";
 import { Readable } from "node:stream";
 import { threadId } from "node:worker_threads";
 
+import { SUPERVISOR_GENERATION } from "@telorun/runner-core";
 import { FakeSupervisor } from "@telorun/runner-core/test-support";
 
 import { ROLE_LABEL, SUPERVISOR_LISTEN_ENV, SUPERVISOR_TOKEN_ENV, WORKSPACE_PORT } from "./container-spec.js";
@@ -53,7 +54,7 @@ export class FakeEngine {
   readonly removed: string[] = [];
   readonly workspaceWrites: unknown[] = [];
   /** The generation supervisors started from now on claim. */
-  generation = 1;
+  generation = SUPERVISOR_GENERATION;
   apiVersion = "1.47";
   private sequence = 0;
 
