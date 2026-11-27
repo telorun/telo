@@ -1,4 +1,0 @@
-units:
-  apps/studio: Fixed
-body: Start from a starter now lists the starters on a first visit, and the landing
-  screen scrolls from its top in a short window.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.23.0 - 2026-11-27
+### Added
+* Assert.Schema's schema is typed as JSON Schema, so a pattern RE2 cannot read is refused by telo check and at load, at the pattern. Breaking: such a pattern, or a schema that is not JSON Schema, is now refused before the run.
+
 ## 0.22.2 - 2026-11-22
 ### Security
 * Refreshed locked dependency versions within their declared ranges, as part of a workspace-wide refresh that clears known security advisories.

@@ -1,9 +1,0 @@
-units:
-  templating: Added
-body: "In the `telo-templating` crate, `analyze_cel_with_tree` also answers the type the
-  expression checked, and a `HoleVerdict` receives it, so `!interpolate` judges a
-  nullable hole from the checked type rather than its printed name.
-  `cel::analyze::validate_chain_against_schema` and `schema_conjuncts` are removed from
-  the crate: nothing in Rust asks for the chain check, and every member read is the
-  engine verdict. `@telorun/templating` keeps `validateChainAgainstSchema` and
-  `schemaConjuncts`."

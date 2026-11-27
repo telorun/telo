@@ -1,6 +1,0 @@
-units:
-  apps/host-runner: Added
-body: The runner opens each application's debug-stream connection itself, a plain socket
-  to the application's loopback --inspect address, through the runner core's
-  inspect-endpoint opener; what an application runs and what a session reports are
-  unchanged.

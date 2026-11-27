@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.0 - 2026-11-27
+### Added
+* Requires the telo release that checks an HTTP route's request and response schemas before the app runs, as the http-server module it is built with does: an older telo no longer selects this version.
+
 ## 0.5.0 - 2026-11-11
 ### Added
 * Imports of workspace modules are relative paths in the source tree; the published form is written at release.

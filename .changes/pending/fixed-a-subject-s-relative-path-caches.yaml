@@ -1,6 +1,0 @@
-units:
-  modules/benchmark: Fixed
-body: A subject's relative path (`caches`, `traceFile`) is checked by an RE2 pattern
-  beside a `not:` instead of lookaheads, so the module loads where schema patterns are
-  RE2; it accepts exactly the paths it accepted before, and a refused `..` segment,
-  absolute path or bare `.` now reads `matches a shape that is not allowed here`.

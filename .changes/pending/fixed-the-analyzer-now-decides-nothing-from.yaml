@@ -1,9 +1,0 @@
-units:
-  analyzer: Fixed
-body: "The analyzer now decides nothing from a CEL type's printed name: a module call's
-  argument and a value fitted to a slot are judged by the CEL type itself, so a
-  union-typed argument is refused where any of its members does not fit, a member past
-  the point where a long type's name is cut included, and a slot reached by a type
-  deeper than its printed name is judged to the bottom; a choice's selector, a step
-  result's recorded type, a value given to a text and the value-type hint read the type
-  too, and a record handed to a text is described as a record rather than a map."

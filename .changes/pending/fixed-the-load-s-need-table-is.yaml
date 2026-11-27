@@ -1,7 +1,0 @@
-units:
-  kernel: Fixed
-body: "The load's need table is the running configuration's: a need supplied behind a
-  choice, at an imports: entry or at a library's own import, is a supply only where the
-  option taken writes it; where the option leaves it out the need is read from the
-  environment, so with nothing set the load is refused naming the variable instead of
-  failing inside the import."

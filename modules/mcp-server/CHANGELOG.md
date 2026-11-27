@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.25.0 - 2026-11-27
+### Added
+* Requires the telo release that checks an HTTP route's request and response schemas before the app runs, as the http-server module it is built with does: an older telo no longer selects this version.
+
 ## 0.23.0 - 2026-11-22
 ### Security
 * Updated @modelcontextprotocol/sdk to 1.32 or later, which fixes OAuth credentials being sent to the wrong server (GHSA-6qxp-vccf-f47h), the unbounded request size (GHSA-f897-62hf-6gxq) and the transitive hono and proxy-addr advisories (GHSA-jqcg-44mw-7w3h).

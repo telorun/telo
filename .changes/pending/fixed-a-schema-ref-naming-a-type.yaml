@@ -1,8 +1,0 @@
-units:
-  analyzer: Fixed
-body: A schema `$ref` naming a type its module does not declare, or an unknown alias, is
-  reported at the `$ref`'s own line — one inside an inline contract shape where it is
-  written — instead of at the top of the document; and a `!ref` in a named shape's
-  `schema` naming a resource that is no named shape is refused as
-  `REFERENCE_KIND_MISMATCH` by `telo check`, where it used to check clean and fail at
-  run with a validator error.

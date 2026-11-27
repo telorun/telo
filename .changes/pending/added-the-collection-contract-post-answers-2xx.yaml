@@ -1,4 +1,0 @@
-units:
-  modules/data-model: Added
-body: "The collection contract: POST answers 2xx with the stored record, valid against
-  the collection model, as PATCH does, so a form can read result of its create."

@@ -1,5 +1,0 @@
-units:
-  modules/assert: Added
-body: "Assert.Schema's schema is typed as JSON Schema, so a pattern RE2 cannot read is
-  refused by telo check and at load, at the pattern. Breaking: such a pattern, or a
-  schema that is not JSON Schema, is now refused before the run."

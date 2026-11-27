@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.4 - 2026-11-27
+### Fixed
+* A subject's relative path (`caches`, `traceFile`) is checked by an RE2 pattern beside a `not:` instead of lookaheads, so the module loads where schema patterns are RE2; it accepts exactly the paths it accepted before, and a refused `..` segment, absolute path or bare `.` now reads `matches a shape that is not allowed here`.
+
 ## 0.12.3 - 2026-11-22
 ### Security
 * Refreshed locked dependency versions within their declared ranges, as part of a workspace-wide refresh that clears known security advisories.

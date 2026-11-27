@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.3 - 2026-11-27
+### Fixed
+* A language's `code` refuses `osd` with `not:` beside an RE2 pattern instead of a lookahead, so the module loads where schema patterns are RE2; it accepts exactly the codes it accepted before, and `osd` now reads `matches a shape that is not allowed here`.
+
 ## 0.4.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

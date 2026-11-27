@@ -1,8 +1,0 @@
-units:
-  modules/crud-ui: Added
-  modules/ui-lucide: Added
-  modules/ui-react: Added
-  modules/ui-react-conformance: Added
-  modules/ui-react-radix: Added
-body: "Requires the telo release that checks format: path-template, as the ui module it
-  is built with does: an older telo no longer selects this version."
