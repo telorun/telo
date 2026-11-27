@@ -56,6 +56,8 @@ export type AppResource = RuntimeResource & {
   pageWidth?: PageWidth | null;
   /** The layout every page is drawn in, unless its entry names another. */
   layout?: unknown;
+  /** Where toasts sit; bottom and end where not written. */
+  toaster?: { side?: "top" | "bottom"; align?: "start" | "center" | "end" } | null;
   /** Each a `Ui.Page`, or a `Ui.PageRoute`. */
   pages: unknown[];
   /** Nodes drawn for a path no page serves. */
@@ -505,6 +507,7 @@ export class UiReactApp {
         stylesheets: [...started.leading, ...tokens, ...started.trailing],
         controls: started.controls,
         compactBelow: this.resource.compactBelow ?? "40rem",
+        toaster: { side: this.resource.toaster?.side ?? "bottom", align: this.resource.toaster?.align ?? "end" },
       },
       started.vary.app,
     );

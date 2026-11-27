@@ -35,6 +35,7 @@ messages:
   siteNavigation: साइट
   collapseNavigation: नेविगेशन समेटें
   expandNavigation: नेविगेशन फैलाएँ
+  toaster: सूचनाएँ
   search: "{$label} खोजें"
   remove: "{$label} हटाएँ"
   clear: "{$label} साफ़ करें"

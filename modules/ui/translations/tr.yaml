@@ -35,6 +35,7 @@ messages:
   siteNavigation: Site
   collapseNavigation: Gezinmeyi daralt
   expandNavigation: Gezinmeyi genişlet
+  toaster: Bildirimler
   search: "Ara: {$label}"
   remove: "Kaldır: {$label}"
   clear: "Temizle: {$label}"

@@ -243,6 +243,14 @@ A [`Ui.Aside`](split-view.md#the-aside) — a split view's or a page layout's �
 names a compact surface the same way, at `aside.compact`; it has no address of
 its own to stand in for, so the same two rules apply to it.
 
+## Closing from an effect
+
+A [`Ui.Close`](toasts.md#uiclose) in an `onSuccess` or `onFailure` list closes
+the surface the call ran in, once the effects before it have happened, if that
+surface is still open — so an Archive pressed in a drawer closes the drawer and
+then says so in a [toast](toasts.md). It is an effect and not a destination: it
+has no address, so a link to it is `REFERENCE_KIND_MISMATCH`.
+
 ## After a submit, and unsaved input
 
 Both belong to the form the opened page holds — a [`Ui.Form`](form.md#the-form-owns-its-lifecycle)

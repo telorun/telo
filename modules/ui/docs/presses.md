@@ -58,11 +58,15 @@ in — is in [surfaces](surfaces.md#a-page-opened-in-a-surface).
 
 ## Effects
 
-What follows a successful write is a list of `Ui.Effect`s: the `onSuccess` of a
-[call](mutation.md#after-a-success) and of a [form](form.md#onsuccess). `Ui.Effect`
-is an abstract, so an effect kind another module adds is accepted with no change
-to the call; anything that is not an effect there is `REFERENCE_KIND_MISMATCH`.
-Today the effects are the destinations, `Ui.Navigate` and `Ui.OpenPage`. They run
+What follows a write's answer is a list of `Ui.Effect`s: the `onSuccess` and
+`onFailure` of a [call](mutation.md#after-a-success) and of a
+[form](form.md#onsuccess), and of a [listing's `delete`](listing.md#delete).
+`Ui.Effect` is an abstract, so an effect kind another module adds is accepted
+with no change to the call; anything that is not an effect there is
+`REFERENCE_KIND_MISMATCH`. Today the effects are the destinations, `Ui.Navigate`
+and `Ui.OpenPage`, [`Ui.Toast`](toasts.md#uitoast), which posts a notification,
+and [`Ui.Close`](toasts.md#uiclose), which closes the surface the call ran in —
+neither is a destination, so neither can stand at a `to`. They run
 in the order written, each after the one before has happened, and are run by the
 page shell, so they run even after the component that made the call has closed.
 
@@ -82,7 +86,7 @@ unknown kind is.
 | a [relation](collection-presentation.md#relations) | `row`, the related record |
 | an [option source](field-kinds.md#option-sources) | `row`, the option's record |
 | a [navigation](navigation.md#entries--uinavigationitem) `link` entry | nothing: every value is fixed |
-| a call's or form's [`onSuccess`](mutation.md#after-a-success), as an [effect](#effects) | `result` and `input`; a form's, `values` and `result` |
+| a call's or form's [`onSuccess`](mutation.md#after-a-success) and `onFailure`, as an [effect](#effects) | `result` and `input` in `onSuccess`, `error` and `input` in `onFailure`; a form's, `values` and `result` or `error`; a listing's `delete`, `row` (and `error`) |
 | a [press](#presses) on a `box`, `stack` or `columns` node | the roots of the tree it is in |
 | a [`Ui.Listing`'s press](listing.md#pressing-a-record), `edit` | `row`, `query` and `params` |
 | a [`Ui.Listing`'s `create`](listing.md#create-and-edit) | `values`, `query` and `params` |

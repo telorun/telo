@@ -48,7 +48,7 @@ ABI, or lists a specifier outside this set, with an `error` node:
 
 `@telorun/ui-react` exports exactly `useHost` — a hook callable in any
 component the host renders, a table layout's cells included. It returns the host object
-and re-renders the caller when `location` changes. The object has six fields:
+and re-renders the caller when `location` changes. The object has seven fields:
 
 | Field | |
 | --- | --- |
@@ -58,6 +58,7 @@ and re-renders the caller when `location` changes. The object has six fields:
 | `fetch` | `fetch(…)` — the platform `fetch` as the application's own composites call it: same-origin credentials, origin-relative URLs. Returns the platform `Response` untouched, 401 and 403 included. A cross-origin request passes through unchanged. |
 | `notifyChanged` | `notifyChanged(basePath)` — say that the data at this app-relative path changed. Local to the document: every listing whose source's `basePath`, every query whose resolved `url` path and every chat whose open conversation path is exactly that path (encoded, its query left out) reloads what it shows, keeping the viewer's place, and every `onChanged` listener for it runs. The renderer's own forms, deletes and actions say the same after a successful write, for the path they wrote. |
 | `onChanged` | `onChanged(basePath, listener)` — call `listener()` after each change announced for exactly that path, whoever said it; returns the function that stops it. |
+| `toast` | `toast({ text, tone?, link? })` — post a [toast](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) into the application's one toaster, the same stack and announcer the page's own toasts use. `text` is a string in the component's own words (read literally, no placeholders); `tone` is `info` (default), `success`, `warning` or `danger`; `link` is `{ to, label }`, `to` an app-relative reference resolved as `navigate` resolves it (a scheme or a host throws `TypeError`), opening a page it names the way a toast's link does. It returns `{ dismiss }`. A toast with a `link`, or of tone `warning` or `danger`, stays until dismissed; any other lasts a few seconds. Timing, the limit of three shown and the key are the renderer's: two posts with the same tone, text and link are one toast, and the one shown restarts its timer. A component that offers Undo draws it in its own output. |
 
 The declaration, which a library can type-check against:
 
@@ -93,6 +94,15 @@ export interface Host {
   notifyChanged(basePath: string): void;
   /** Call `listener` after each change announced for exactly this path; returns the function that stops it. */
   onChanged(basePath: string, listener: () => void): () => void;
+  /**
+   * Post a toast into the application's toaster: `text` in the component's own
+   * words, `tone` `info` unless given, `link` an app-relative `to` resolved as
+   * `navigate` resolves it, else `TypeError`. One with a `link`, or of tone
+   * `warning` or `danger`, stays until dismissed; the others last a few
+   * seconds. Two posts with the same tone,
+   * text and link are one toast. `dismiss` takes it away.
+   */
+  toast(options: { text: string; tone?: "info" | "success" | "warning" | "danger"; link?: { to: string; label: string } }): { dismiss(): void };
 }
 
 /**
@@ -106,7 +116,7 @@ export function useHost(): Host;
 
 | | Is relative to | Used by |
 | --- | --- | --- |
-| **The application's** | the mount: `/done` is the page `/done` wherever the application is mounted | `location`, `navigate`, `href`, an address's resolved path (a destination's `href`, a query's `url`, an action's `request.target`), an `image` node's `src` and a `source.basePath` |
+| **The application's** | the mount: `/done` is the page `/done` wherever the application is mounted | `location`, `navigate`, `href`, a toast's `link.to`, an address's resolved path (a destination's `href`, a query's `url`, an action's `request.target`), an `image` node's `src` and a `source.basePath` |
 | **The origin's** | the origin: `/api/todos` is that path on the server | `fetch` |
 
 A page is addressed in the first; `fetch` requests in the second, so a

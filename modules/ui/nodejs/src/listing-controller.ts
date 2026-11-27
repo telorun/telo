@@ -9,6 +9,7 @@ import { pendingMutationCall, providedMutationCalls, type MutationCallConfig } f
 import { uiText } from "./spec-texts.js";
 import { isLayout, type LayoutAnswer, type LayoutInputs } from "./listing-layout.js";
 import { tableLayout } from "./table-layout.js";
+import { effectsAt, type EffectSpec } from "./effect.js";
 import { filledProvided } from "./fill-marking.js";
 import { reloadEveryOf } from "./timed-reload.js";
 import { defaultedPressSpec, pressSpec, type PressConfig } from "./press.js";
@@ -27,7 +28,7 @@ type ListingResource = RuntimeResource & {
   rowStyle?: StyleRule | null;
   create?: { to: unknown; label?: unknown } | null;
   edit?: { to: unknown; label?: unknown } | null;
-  delete?: boolean | null;
+  delete?: boolean | { onSuccess?: unknown[] | null; onFailure?: unknown[] | null } | null;
   rowActions?: MutationCallConfig[] | null;
   press?: PressConfig | null;
   empty?: AuthoredNode | null;
@@ -108,6 +109,14 @@ class Listing implements ResourceInstance {
     const create = await defaultedPressSpec(resource.create, "create", this.ctx, owner, "create");
     const edit = await defaultedPressSpec(resource.edit, "edit", this.ctx, owner, "edit");
     const press = (await pressSpec(resource.press, this.ctx, owner)) ?? edit;
+    const deletion = resource.delete;
+    const deleted: false | { onSuccess: EffectSpec[]; onFailure: EffectSpec[] } =
+      deletion == null || deletion === false
+        ? false
+        : {
+            onSuccess: await effectsAt(deletion === true ? [] : deletion.onSuccess, "success", this.ctx, owner, "delete.onSuccess"),
+            onFailure: await effectsAt(deletion === true ? [] : deletion.onFailure, "danger", this.ctx, owner, "delete.onFailure"),
+          };
     const written = resource.empty == null ? undefined : await resolveNode(resource.empty, this.ctx, `${owner} empty`);
     if (written) assets.push(written.assets);
     const node: SpecNode = {
@@ -128,7 +137,7 @@ class Listing implements ResourceInstance {
       ...(resource.rowStyle ? { rowStyle: resource.rowStyle } : {}),
       create,
       edit,
-      delete: resource.delete === true,
+      delete: deleted,
       rowActions,
       rowActionsDisplay: resource.rowActionsDisplay ?? "auto",
       relations,

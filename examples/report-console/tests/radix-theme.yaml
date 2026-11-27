@@ -78,7 +78,7 @@ steps:
         builtInStylesheets: !cel "steps.builtInApp.result.body.stylesheets.map(s, s.substring(s.lastIndexOf('/') + 1))"
       expected:
         sets:
-          - [ Select, MultiSelect, Combobox, Listbox, Checkbox, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Navigation, Tabs, Icon ]
+          - [ Select, MultiSelect, Combobox, Listbox, Checkbox, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Toaster, Navigation, Tabs, Icon ]
         setModule: { name: true, status: 200 }
         mechanics:
           [

@@ -29,6 +29,15 @@ export interface Host {
   notifyChanged(basePath: string): void;
   /** Call `listener` after each change announced for exactly this path; returns the function that stops it. */
   onChanged(basePath: string, listener: () => void): () => void;
+  /**
+   * Post a toast into the application's toaster: `text` in the component's own
+   * words, `tone` `info` unless given, `link` an app-relative `to` resolved as
+   * `navigate` resolves it, else `TypeError`. One with a `link`, or of tone
+   * `warning` or `danger`, stays until dismissed; the others last a few
+   * seconds. Two posts with the same tone,
+   * text and link are one toast. `dismiss` takes it away.
+   */
+  toast(options: { text: string; tone?: "info" | "success" | "warning" | "danger"; link?: { to: string; label: string } }): { dismiss(): void };
 }
 
 /**

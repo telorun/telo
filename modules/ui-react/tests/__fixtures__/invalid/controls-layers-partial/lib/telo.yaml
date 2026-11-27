@@ -1,24 +1,24 @@
-# A control set replacing the nine layer controls of the third generation and
-# not the combobox, the tenth.
+# A control set replacing the ten layer controls of the fourth generation and
+# not the toaster, the eleventh.
 kind: Telo.Library
 metadata:
   name: UiReactControlsLayersPartial
   version: 1.0.0
   description: >-
-    Test fixture exporting a control set that implements nine of the layer
-    controls, without the combobox.
+    Test fixture exporting a control set that implements ten of the layer
+    controls, without the toaster.
 imports: { UiReact: ../../../../../ }
 exports:
-  resources: [nineLayers]
+  resources: [tenLayers]
   browser:
-    - specifier: "@fixture/nine-layers"
-      path: ./browser/nine-layers.js
-      source: ./nine-layers.js
-      abi: ui_react_controls-4
+    - specifier: "@fixture/ten-layers"
+      path: ./browser/ten-layers.js
+      source: ./ten-layers.js
+      abi: ui_react_controls-5
       external: [react, react/jsx-runtime, react-dom]
-      exports: [Select, MultiSelect, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Navigation]
+      exports: [Select, MultiSelect, Combobox, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Navigation]
 ---
 kind: UiReact.Controls
-metadata: { name: nineLayers }
-entry: "@fixture/nine-layers"
-implements: [Select, MultiSelect, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Navigation]
+metadata: { name: tenLayers }
+entry: "@fixture/ten-layers"
+implements: [Select, MultiSelect, Combobox, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Navigation]

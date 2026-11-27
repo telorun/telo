@@ -1,5 +1,5 @@
 import { canonicalTypeSchemaId, RuntimeError, type ResourceContext } from "@telorun/sdk";
-import { effectAt, type EffectSpec } from "./effect.js";
+import { effectsAt, type EffectSpec, type MutationPressSpec, type ToastSpec } from "./effect.js";
 import { mergeAssets, type AssetFile, type SpecNode } from "./composite.js";
 import { filledNode } from "./fill-marking.js";
 import { isMutation, type MutationSpec } from "./mutation-controller.js";
@@ -18,6 +18,7 @@ export interface MutationCallConfig {
   prompt?: unknown;
   enabled?: (Condition & { disabledText: unknown }) | null;
   onSuccess?: unknown[] | null;
+  onFailure?: unknown[] | null;
   result?: AuthoredNode | null;
   failure?: AuthoredNode | null;
 }
@@ -30,6 +31,7 @@ export interface AnsweredCall {
   mutation: MutationSpec;
   prompt: PromptSpec | null;
   onSuccess: EffectSpec[];
+  onFailure: EffectSpec[];
   result?: SpecNode;
   failure: SpecNode;
 }
@@ -156,7 +158,6 @@ export function pendingMutationCall(
       `${owner}: '${at("inputs")}' cannot make a record of the mutation's input model: ${problems.join("; ")}.`,
     );
   }
-  const effects = (entry.onSuccess ?? []).map((effect, index) => () => effectAt(effect, ctx, () => `'${at(`onSuccess[${index}]`)}' of ${owner}`));
   const reader = { ctx, owner };
   const call = {
     async provide(): Promise<ProvidedAnswer> {
@@ -180,12 +181,13 @@ export function pendingMutationCall(
         `${owner} ${at("failure")}`,
         { error, input },
       )) ?? { node: NOTHING, assets: [] };
-      const onSuccess: EffectSpec[] = [];
-      for (const effect of effects) onSuccess.push(await effect());
+      const onSuccess = await effectsAt(entry.onSuccess, "success", ctx, owner, at("onSuccess"));
+      const onFailure = await effectsAt(entry.onFailure, "danger", ctx, owner, at("onFailure"));
       const node: AnsweredCall = {
         mutation: spec,
         prompt: prompt === null ? null : await prompt.provide(),
         onSuccess,
+        onFailure,
         ...(drawn ? { result: filledNode(drawn.node ?? NOTHING) } : {}),
         failure: filledNode(failure.node ?? NOTHING),
       };
@@ -198,6 +200,50 @@ export function pendingMutationCall(
     ...(shape === "call" && entry.label != null ? { label: entry.label } : {}),
     ...(entry.confirm != null ? { confirm: entry.confirm } : {}),
     ...(entry.enabled != null ? { enabled: entry.enabled } : {}),
+  };
+}
+
+/** What a toast's `call` does on failure when none is written: one `danger`
+ *  toast reading the error's message, so a failed press is never silent. */
+const DEFAULT_PRESS_FAILURE: ToastSpec = {
+  type: "toast",
+  text: {
+    text: { text: "{$message}", context: null, lang: "und", computed: false },
+    values: { message: { root: "error", path: ["message"] } },
+  },
+  tone: "danger",
+};
+
+/** A `Ui.MutationPress` as written. */
+export interface MutationPressConfig {
+  mutation: unknown;
+  inputs: Record<string, Binding>;
+  label: unknown;
+  onSuccess?: unknown[] | null;
+  onFailure?: unknown[] | null;
+}
+
+/**
+ * A press running a mutation, as a renderer receives it, held to the mutation's
+ * input model as a call is. It asks nothing and draws no tree; an omitted
+ * `onFailure` is the one `danger` toast reading the error's message.
+ */
+export async function mutationPressSpec(entry: MutationPressConfig, ctx: ResourceContext, owner: string, where: string): Promise<MutationPressSpec> {
+  const mutation = ctx.resolveRef(entry.mutation, isMutation, () => `'${where}.mutation' of ${owner}`, "Ui.Mutation");
+  const spec = mutation.spec();
+  const problems = callInputProblems(spec.schema, entry.inputs, false, ctx);
+  if (problems.length > 0) {
+    throw new RuntimeError(
+      "ERR_UI_MUTATION_CALL_INPUTS_INVALID",
+      `${owner}: '${where}.inputs' cannot make a record of the mutation's input model: ${problems.join("; ")}.`,
+    );
+  }
+  return {
+    mutation: spec,
+    inputs: entry.inputs,
+    label: entry.label,
+    onSuccess: await effectsAt(entry.onSuccess, "success", ctx, owner, `${where}.onSuccess`),
+    onFailure: entry.onFailure == null ? [DEFAULT_PRESS_FAILURE] : await effectsAt(entry.onFailure, "danger", ctx, owner, `${where}.onFailure`),
   };
 }
 

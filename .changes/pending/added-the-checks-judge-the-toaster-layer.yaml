@@ -1,0 +1,6 @@
+units:
+  modules/ui-react-conformance: Added
+body: "The checks judge the Toaster layer control and the ui_react_controls-5
+  generation, with their vectors and scenes moved to it. Breaking: a controls set
+  written against ui_react_controls-4 is refused by these checks, since that generation
+  is no longer hosted."

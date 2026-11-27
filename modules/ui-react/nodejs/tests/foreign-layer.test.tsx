@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import contract from "../src/contract/controls.json" with { type: "json" };
 import vectors from "../src/contract/vectors.json" with { type: "json" };
 import type { ControlVectors, ElementSpec } from "../src/contract/interpreter.js";
-import { prepareWindow } from "../src/contract/interpreter.js";
+import { prepareWindow, withElements } from "../src/contract/interpreter.js";
 import { BUILT_IN_CONTROLS } from "../src/browser/controls/index.js";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -49,10 +49,10 @@ function draw(name: string): unknown[][] {
   const { props } = (vectors as Record<string, ControlVectors>)[name];
   const intents: unknown[][] = [];
   // A navigation is open with its one top-level group's panel: `open` is the set of open groups.
-  const given: Record<string, unknown> = { ...props, open: name === "Navigation" ? ["docs"] : true };
+  const given = withElements({ ...props, open: name === "Navigation" ? ["docs"] : true }, node) as Record<string, unknown>;
   if (name === "Popover") given.anchor = opener;
-  for (const intent of ["onOpenChange", "onChange", "onEndReached"]) given[intent] = (...args: unknown[]) => intents.push([intent, ...args]);
-  if (given.children !== undefined) given.children = children(given.children);
+  for (const intent of ["onOpenChange", "onChange", "onEndReached", "onDismiss", "onPauseChange"]) given[intent] = (...args: unknown[]) => intents.push([intent, ...args]);
+  if (props.children !== undefined) given.children = children(props.children);
   const Control = BUILT_IN_CONTROLS[name as keyof typeof BUILT_IN_CONTROLS] as ComponentType<any>;
   root = createRoot(container);
   act(() => root!.render(createElement(Control, given)));

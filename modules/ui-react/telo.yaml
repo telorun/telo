@@ -21,7 +21,7 @@ exports:
   kinds: [App, Theme, Controls]
   resources: [defaultTheme]
   # The renderer's contracts as data — the parts, the controls of
-  # `ui_react_controls-4` and the layouts of `ui_react_layouts-2` with their
+  # `ui_react_controls-5` and the layouts of `ui_react_layouts-2` with their
   # vectors, the scenes — and the DOM-only interpreter that runs them.
   code:
     - specifier: "@telorun/ui-react-contract"
@@ -164,6 +164,16 @@ schema:
       type: string
       pattern: "^(0|[0-9]+(\\.[0-9]+)?|\\.[0-9]+)(px|rem|em)$"
       default: 40rem
+    toaster:
+      title: Toaster
+      description: >-
+        Where the application's toasts sit: the `side` of the viewport, `top`
+        or `bottom`, and `align` along it, `start`, `center` or `end`.
+      type: object
+      additionalProperties: false
+      properties:
+        side: { type: string, enum: [top, bottom], default: bottom }
+        align: { type: string, enum: [start, center, end], default: end }
     pageWidth:
       title: Page width
       description: >-
@@ -273,7 +283,7 @@ schema:
         each control one implementation.
 ---
 # What a module ships to draw some of the renderer's controls, declared beside
-# the code: its browser entry, written against `ui_react_controls-4`, and the
+# the code: its browser entry, written against `ui_react_controls-5`, and the
 # controls it exports, each under its own name.
 kind: Telo.Definition
 metadata:
@@ -281,8 +291,9 @@ metadata:
   description: >-
     A set of interactive controls for a web interface — text boxes, selects,
     multi-selects, search boxes with suggestions, checkboxes, dialogs, drawers,
-    menus, navigation menus, tabs, tooltips, date pickers and icons — shipped as browser code by a
-    module and drawn in place of the built-in ones by any theme listing it.
+    menus, navigation menus, tabs, tooltips, notification toasts, date pickers
+    and icons — shipped as browser code by a module and drawn in place of the
+    built-in ones by any theme listing it.
     Checked against the controls contract before the application starts.
 capability: Telo.Provider
 controllers: [pkg:telo/local/js?path=./nodejs/ui-react.mjs&local_path=./nodejs/src/index.ts#ControlsController]
@@ -295,7 +306,7 @@ schema:
       title: Entry
       description: >-
         The specifier of one of the declaring module's browser entries,
-        written against `ui_react_controls-4`.
+        written against `ui_react_controls-5`.
       type: string
     implements:
       title: Implements
@@ -309,27 +320,28 @@ schema:
           [
           TextInput, NumberInput, TextArea, DateInput, DateTimeInput, TimeInput, TagsInput,
           DateRangeInput, Checkbox, Switch, Slider, OptionGroup, Select, MultiSelect, Combobox, Listbox,
-          Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Navigation, Tabs, Icon,
+          Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Toaster, Navigation, Tabs, Icon,
           ]
         x-telo-browser-export:
           entry: /entry
-          abi: [ui_react_controls-4]
+          abi: [ui_react_controls-5]
           external: [react, react/jsx-runtime, react-dom]
-  # The ten controls drawing a layer at the end of `<body>` are replaced as
+  # The eleven controls drawing a layer at the end of `<body>` are replaced as
   # one unit, so every layer on a page comes from one implementation: a layer
   # stack cannot be made to cooperate with another library's.
   x-telo-resource-rules:
     - condition: !cel >-
         !self.implements.exists(n, n in ['Select', 'MultiSelect', 'Combobox',
         'Dialog', 'Drawer', 'Popover', 'Confirmation', 'Menu', 'Tooltip',
-        'Navigation']) || ['Select', 'MultiSelect', 'Combobox', 'Dialog',
-        'Drawer', 'Popover', 'Confirmation', 'Menu', 'Tooltip',
-        'Navigation'].all(n, n in self.implements)
+        'Toaster', 'Navigation']) || ['Select', 'MultiSelect', 'Combobox',
+        'Dialog', 'Drawer', 'Popover', 'Confirmation', 'Menu', 'Tooltip',
+        'Toaster', 'Navigation'].all(n, n in self.implements)
       code: UI_CONTROLS_LAYERS_PARTIAL
       message: >-
         implements some of the layer controls but not all of them. A set
         implementing any of Select, MultiSelect, Combobox, Dialog, Drawer,
-        Popover, Confirmation, Menu, Tooltip and Navigation implements all ten.
+        Popover, Confirmation, Menu, Tooltip, Toaster and Navigation implements
+        all eleven.
 ---
 # The built-in look: one stylesheet styling every part, with every token's
 # default and its dark-scheme value. It replaces no control.

@@ -241,6 +241,7 @@ steps:
             label: { set: Ui.Translations, key: save }
             prompt: null
             onSuccess: []
+            onFailure: []
             failure: { type: text, fill: false, text: { set: Ui.Translations, key: loading } }
   - name: callIs
     invoke: { kind: Assert.Equals }

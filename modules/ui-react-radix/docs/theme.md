@@ -50,8 +50,8 @@ tokens only.
 
 ## The controls
 
-`Radix.controls` implements fourteen controls of
-[`ui_react_controls-4`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/) in one browser
+`Radix.controls` implements fifteen controls of
+[`ui_react_controls-5`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/) in one browser
 entry, `@telorun/ui-react-radix`, which leaves only `react`,
 `react/jsx-runtime` and `react-dom` to the page:
 
@@ -67,21 +67,22 @@ entry, `@telorun/ui-react-radix`, which leaves only `react`,
 | `Confirmation` | Radix's alert dialog |
 | `Menu` | Radix's dropdown menu, opened from the renderer's button |
 | `Tooltip` | Radix's tooltip |
+| `Toaster` | the set's own region at the end of `<body>`, drawn on the DOM beside the primitives' stack — not Radix's toast, whose every toast is a layer of that stack (see [the toaster](#the-toaster)) |
 | `Navigation` | in a row or a rail, Radix's navigation menu, each open group's panel at the end of `<body>` placed by the primitives' popper, a nested group a submenu of its own; in a column, each group's entries in place beneath its button, with no portal or popper |
 | `Tabs` | Radix's tabs, chosen by Enter, Space or a press |
 | `Icon` | Lucide's glyphs |
 
 Every other control — the text boxes, dates and times, tags, ranges,
 switches, sliders and option groups — is the renderer's built-in. The
-mechanics the fourteen need (where a list, a panel or a dialog sits, its
+mechanics the fifteen need (where a list, a panel or a dialog sits, its
 stacking and size) are the stylesheet the entry builds, which the application places in
 the `telo.control` layer in place of the built-ins' own.
 
 ### One stack of layers
 
-The ten [layer controls](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/) —
+The eleven [layer controls](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/) —
 `Select`, `MultiSelect`, `Combobox`, `Dialog`, `Drawer`, `Popover`,
-`Confirmation`, `Menu`, `Tooltip`, `Navigation` — are all here, drawn by one copy of the primitives, which
+`Confirmation`, `Menu`, `Tooltip`, `Toaster`, `Navigation` — are all here, drawn by one copy of the primitives, which
 keeps one stack of every layer a page opens:
 
 - Escape closes only the top layer.
@@ -107,6 +108,28 @@ built-in stack's guarantees under this set: Radix cancels Escape in the
 capture phase, and a modal layer traps the focus and stops pointer events on
 the rest of the page.
 
+### The toaster
+
+The toaster is drawn by the set itself, not by Radix's toast: every Radix
+toast is a layer of the primitives' stack, so a toast posted over an open
+dialog would take Escape from it, and one posted before a modal dialog opened
+would stop taking presses. The set's region stays out of the stack as the
+[controls contract](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/)
+requires:
+
+- Every other layer control lets a key, a press or the focus inside the
+  toaster pass: its Escape, outside-press and outside-focus handlers cancel
+  such an event for the primitive, which then neither closes nor counts it as
+  outside, and the toaster still handles its own Escape.
+- The region carries `aria-live="off"`, which keeps it and everything in it
+  out of the `aria-hidden` a modal dialog sets on the rest of the page; each
+  toast carries `pointer-events: auto`, since a modal dialog turns presses off
+  on `<body>`.
+- While a visit F8 started lasts, a focus move into the toaster stops at
+  `<body>`, so a modal dialog's trap, which listens on the document, lets it
+  in; the field F8 left still hears its own blur. A Tab or a press leaves the
+  focus in the dialog.
+
 ## A theme of your own over these controls
 
 A module wanting its own look with these controls declares a theme that
@@ -131,12 +154,12 @@ The theme's stylesheet styles every part and gives every token a value, as
 any theme's must; nothing of `Radix.theme`'s look is inherited. A set of its
 own may add controls `Radix.controls` does not implement — the entries, the
 switch, the slider, the option group — bundling whatever it uses. It cannot
-replace one of the ten layer controls beside `Radix.controls`: two entries
+replace one of the eleven layer controls beside `Radix.controls`: two entries
 of a theme's `controls` implementing one control are refused
 (`UI_THEME_CONTROL_DUPLICATE`), and a set
-implementing one layer control implements all ten
+implementing one layer control implements all eleven
 (`UI_CONTROLS_LAYERS_PARTIAL`). A theme wanting other layer controls ships all
-ten in a set of its own and does not list `Radix.controls`.
+eleven in a set of its own and does not list `Radix.controls`.
 
 ## Checking it
 

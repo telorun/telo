@@ -14,14 +14,14 @@ exports:
     - specifier: "@fixture/layer-controls"
       path: ./browser/layer-controls.js
       source: ./src/layer-controls.js
-      abi: ui_react_controls-4
+      abi: ui_react_controls-5
       external: [react, react/jsx-runtime, react-dom]
-      exports: [Select, MultiSelect, Combobox, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Navigation]
+      exports: [Select, MultiSelect, Combobox, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Toaster, Navigation]
 ---
 kind: UiReact.Controls
 metadata: { name: layerControls }
 entry: "@fixture/layer-controls"
-implements: [Select, MultiSelect, Combobox, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Navigation]
+implements: [Select, MultiSelect, Combobox, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Toaster, Navigation]
 ---
 kind: UiReact.Theme
 metadata: { name: theme }

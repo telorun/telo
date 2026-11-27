@@ -1,8 +1,8 @@
-# The controls contract — `ui_react_controls-4`
+# The controls contract — `ui_react_controls-5`
 
 What a theme's controls are written against. The renderer draws every
 interactive leaf of a page — every text box, choice, list, overlay, menu,
-navigation, tab list, tooltip and glyph — through one control set: a theme's control where the
+navigation, tab list, tooltip, toast and glyph — through one control set: a theme's control where the
 theme implements it, this module's built-in everywhere else. The built-ins are
 the reference implementation; they meet this contract the way any other
 implementation must.
@@ -45,6 +45,7 @@ control's **sub-parts** are the only other parts it may draw.
 | `Confirmation` | Overlay | `surface` | `surface-overlay` |
 | `Menu` | Overlay | `menu` | `menu-item` |
 | `Tooltip` | Overlay | `tooltip` | — |
+| `Toaster` | Overlay | `toaster` | `toast`, `icon` |
 | `Navigation` | Navigation | `navigation` | `nav-item`, `nav-toggle`, `nav-group`, `nav-panel`, `icon` |
 | `Tabs` | Navigation | `tabs` | `tab-list`, `tab`, `tab-panel` |
 | `Icon` | Glyph | `icon` | — |
@@ -107,6 +108,11 @@ decides what changes.
 - `onCommit()` — the entry is meant: Enter or leaving a text box, letting go of
   a slider. Reported after the `onChange` it means. A text box given
   `onCommit` does nothing else with Enter.
+- `onDismiss(key, reason)` — a toast would go: `reason` is `escape`, or
+  `close` for its dismiss button and a swipe, never `outside`. The toast stays
+  until the renderer drops it from `items`.
+- `onPauseChange(paused)` — `true` while the pointer is over the toaster or
+  the focus is inside it, `false` once neither holds.
 
 | Control | Intents, and the prop each sets |
 | --- | --- |
@@ -132,6 +138,7 @@ decides what changes.
 | `Confirmation` | `onOpenChange` → `open` |
 | `Menu` | `onOpenChange` → `open`, `onChange` |
 | `Tooltip` | `onOpenChange` → `open` |
+| `Toaster` | `onDismiss`, `onPauseChange` |
 | `Navigation` | `onOpenChange` → `open`, `onChange` |
 | `Tabs` | `onChange` → `value` |
 
@@ -297,14 +304,75 @@ draws a [`tabs` node](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) with 
 the key the page document gives it and holding which one is chosen; its parts are in the
 [styling contract](styling.md#tabs)'s list.
 
+## Toaster
+
+`Toaster` draws the application's notifications. The renderer draws it once
+for the whole application, for as long as the application is shown — with
+`items` empty while no toast is up, so its live regions exist before the first
+toast arrives. Each item is a `toast` part (`data-state="open"`, `data-tone`
+its tone) holding the renderer's `children` — the `toast-text`, and where the
+toast offers a link or a button the `toast-actions` holding them — followed by
+a dismiss button of the control's own, named by `dismissLabel`, its glyph the
+control's `icon` sub-part. What a toast offers, how long it stays, how many
+are shown and which are equal is the renderer's; the control draws the
+toasts in the order of `items`.
+
+- **The region.** The `toaster` part is a layer root at the end of `<body>`
+  carrying `data-telo-layer`, `role="region"` named by `label`, and `data-side`
+  and `data-align` as `side` and `align` say. It sits at that edge; below the
+  application's breakpoint it spans the width at its edge, above a tab bar,
+  whose height the renderer keeps in `--ui-react-tab-bar-height` on the
+  document's root element while one is drawn.
+- **Announcements.** Each toast is announced once, as it first appears in
+  `items`, with the text of its buttons: a `danger` toast in an assertive live
+  region (`role="alert"`), any other in a polite one (`role="status"`), both
+  inside the region. The toasts themselves are no live region.
+- **The focus.** Posting a toast moves no focus. F8 moves the focus to the
+  region while a toast is shown; Tab and Shift+Tab walk the buttons of the
+  toasts in order, and moving past either end gives the focus back where F8
+  took it from. Escape dismisses the toast holding the focus
+  (`onDismiss(key, "escape")`), the focus moving to the next toast, else the
+  one before, else back where F8 took it from; Escape on the region itself
+  gives the focus back and dismisses nothing.
+- **Dismissal.** The dismiss button reports `onDismiss(key, "close")`, and so
+  does a swipe — a toast dragged sideways far enough and let go. The toast
+  moves with the pointer while it is dragged, except where the person prefers
+  reduced motion, which moves nothing.
+- **The pause.** `onPauseChange(true)` once the pointer is over the region or
+  the focus is inside it, `onPauseChange(false)` once neither holds.
+
+### Outside the stack
+
+The toaster is drawn as a layer and is never a member of the stack the other
+layer controls form, which every implementation meets as these terms:
+
+1. Escape outside the toaster goes to the stack as usual: with a dialog open,
+   Escape in the dialog closes the dialog and the toast stays.
+2. Escape inside the toaster dismisses the focused toast and never reaches the
+   stack; the focus moves on as above, back into a dialog included.
+3. A press or the focus inside the toaster closes no layer: a press on a
+   toast's button with a non-modal drawer, a popover or an open `Select` list
+   leaves each of them open.
+4. A modal layer never sets `inert` or `aria-hidden` on the toaster, a toast or
+   any of their ancestors; while one is open every `toast` and every button in it
+   keeps a computed `pointer-events` other than `none`, so its buttons stay
+   pressable; and its focus trap admits the focus into the toaster only
+   through F8 — Tab and a press leave the focus inside the modal layer.
+
+The scenes hold the first, the second and the fourth across one stack; each
+set's own tests hold the rest.
+
 ## Layers
 
 `Select`, `MultiSelect`, `Combobox`, `Dialog`, `Drawer`, `Popover`,
-`Confirmation`, `Menu`, `Tooltip` and `Navigation` are the **layer controls**:
-each draws a layer at the end of `<body>` — an overlay's `surface` and a modal
-one's `surface-overlay`, a choice list's `select-content`, a combobox's
-`combobox-content`, a `menu`, a `tooltip`, a row's or a rail's `nav-panel`. The contract data marks each of them
-`layer: true`.
+`Confirmation`, `Menu`, `Tooltip`, `Toaster` and `Navigation` are the **layer
+controls**: each draws a layer at the end of `<body>` — an overlay's `surface`
+and a modal one's `surface-overlay`, a choice list's `select-content`, a
+combobox's `combobox-content`, a `menu`, a `tooltip`, the `toaster`, a row's or
+a rail's `nav-panel`. The contract data marks each of them `layer: true`. The
+toaster is a layer outside the stack the others form (see
+[Outside the stack](#outside-the-stack)), and it is in the unit because it must
+come from the same implementation as the stack it stays out of.
 
 - **The marker.** The root of every layer a control draws at the end of
   `<body>` carries `data-telo-layer`. A closing copy is a child of `<body>`
@@ -312,7 +380,7 @@ one's `surface-overlay`, a choice list's `select-content`, a combobox's
   application's element nor a supplied one: nothing in it is an element of
   the page. A live layer root keeps `data-telo-layer` while a later modal
   layer makes it `inert`, and stays an element of the page.
-- **One unit.** A set implementing any layer control implements all ten
+- **One unit.** A set implementing any layer control implements all eleven
   (`UI_CONTROLS_LAYERS_PARTIAL`), so every layer on a page comes from one
   implementation. A primitive library keeps one stack of the layers it draws,
   and two stacks cannot be made to cooperate — one cancels the Escape or traps
@@ -356,7 +424,10 @@ the built-ins:
 This is the built-ins' tested behaviour, not a term every implementation
 meets. A layer built on Radix's overlays cannot meet it — they cancel Escape in
 the capture phase, and a modal one traps the focus and sets `pointer-events:
-none` on `<body>` — which is why the ten are one unit.
+none` on `<body>` — which is why the eleven are one unit.
+
+Toward the toaster, the built-ins also never set `pointer-events: none` on the
+toaster or any of its ancestors.
 
 ## States
 
@@ -405,6 +476,8 @@ no terms of the contract.
 | `Menu` | `data-state` | `open`, `closed` | its root |
 | `Menu` | `data-highlighted` | present | `menu-item` |
 | `Tooltip` | `data-state` | `closed`, `delayed-open`, `instant-open` | its root |
+| `Toaster` | `data-state` | `open`, `closed` | `toast` |
+| `Toaster` | `data-tone` | `info`, `success`, `warning`, `danger` | `toast` |
 | `Navigation` | `data-layout` | `horizontal`, `vertical`, `rail` | its root |
 | `Navigation` | `data-state` | `open`, `closed` | `nav-toggle` |
 | `Navigation` | `data-state` | `open`, `closed` | `nav-panel` |
@@ -420,7 +493,7 @@ What an implementation can type-check against:
 ```ts
 import type { ComponentType, ReactElement, ReactNode } from "react";
 
-/** Why a list, a menu, a tooltip or an overlay would close. */
+/** Why a list, a menu, a tooltip or an overlay would close, or a toast is dismissed. */
 export type CloseReason = "escape" | "outside" | "close";
 
 /** One option: a key the renderer issues, and the finished text shown for it. */
@@ -782,6 +855,34 @@ export interface TooltipProps {
   children: ReactElement;
 }
 
+/** How a toast is announced: `danger` assertively, the others politely. */
+export type ToastTone = "info" | "success" | "warning" | "danger";
+
+/** One toast the toaster shows. */
+export interface ToastItem {
+  /** Issued by the renderer, unique among the items. */
+  key: string;
+  tone: ToastTone;
+  /** The renderer's text and buttons: its `toast-text` and `toast-actions`. */
+  children: ReactNode;
+}
+
+export interface ToasterProps {
+  /** The toasts shown, oldest first; empty while none is up. */
+  items: ToastItem[];
+  /** The edge it sits at, and where along it. */
+  side: "top" | "bottom";
+  align: "start" | "center" | "end";
+  /** The region's accessible name. */
+  label: string;
+  /** The accessible name of every toast's dismiss button. */
+  dismissLabel: string;
+  /** A toast is dismissed: `escape`, or `close` for its dismiss button and a swipe. */
+  onDismiss(key: string, reason: CloseReason): void;
+  /** True while the pointer is over the toaster or the focus is inside it. */
+  onPauseChange(paused: boolean): void;
+}
+
 /** The semantic names of the glyphs the renderer draws. */
 export type IconName =
   | "add"
@@ -818,7 +919,7 @@ export interface IconProps {
   name: IconName;
 }
 
-/** The control set of `ui_react_controls-4`: a module implementing any of them
+/** The control set of `ui_react_controls-5`: a module implementing any of them
  *  exports each under its name. */
 export interface Controls {
   TextInput: ComponentType<TextInputProps>;
@@ -843,6 +944,7 @@ export interface Controls {
   Confirmation: ComponentType<ConfirmationProps>;
   Menu: ComponentType<MenuProps>;
   Tooltip: ComponentType<TooltipProps>;
+  Toaster: ComponentType<ToasterProps>;
   Navigation: ComponentType<NavigationProps>;
   Tabs: ComponentType<TabsProps>;
   Icon: ComponentType<IconProps>;
@@ -913,7 +1015,8 @@ this module, beside the interpreter that runs it:
   [layout contract](layouts-abi.md), its vectors and their runner.
 
 A step is one of `click`, `press` (a pointer pressed down, `mouse` or
-`touch`), `hover` (a mouse pointer moved onto the element), `key` (with
+`touch`), `hover` (a mouse pointer moved onto the element), `leave` (a mouse
+pointer moved off the element, out of the page), `key` (with
 `shift`), `fill`, `focus`, `blur`, `scroll` (the element and everything in it
 scrolled to its end), `drop` (files — a name, a type and a size — dragged over
 the element and, unless held over it, dropped on it), `wait`, `props` (a
@@ -944,7 +1047,7 @@ implementation and its version are part of the contract's oracle.
 
 ## How the generation grows
 
-For the life of `ui_react_controls-4`:
+For the life of `ui_react_controls-5`:
 
 - the control set only grows;
 - a prop is added only where an implementation ignoring it still meets the
@@ -952,8 +1055,8 @@ For the life of `ui_react_controls-4`:
 - the supplied specifiers only grow.
 
 Anything else — a new value form, a state, a required part, an intent — is
-`ui_react_controls-5`. A renderer may host several generations at once; this
-one hosts `ui_react_controls-4` alone.
+`ui_react_controls-6`. A renderer may host several generations at once; this
+one hosts `ui_react_controls-5` alone.
 
 `ui_react_controls-2` differs from `ui_react_controls-1` in:
 
@@ -987,3 +1090,12 @@ one hosts `ui_react_controls-4` alone.
 - the parts `search-input` (its root), `combobox-content`, `combobox-group` and
   `combobox-item`;
 - one interpreter term, the `activeDescendant` of an expectation.
+
+`ui_react_controls-5` differs from `ui_react_controls-4` in:
+
+- one control, `Toaster` — an eleventh layer control, drawn outside the stack,
+  so a set implementing the ten of generation 4 is refused;
+- the parts `toaster` and `toast` (carrying `data-state` and the new state
+  `data-tone`), and the renderer's `toast-text` and `toast-actions` it holds;
+- two intents, `onDismiss` and `onPauseChange`;
+- one interpreter term, the `leave` step.

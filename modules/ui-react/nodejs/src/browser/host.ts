@@ -5,6 +5,8 @@ import { changeKey, refreshCovers, type Refresh } from "./address-wire.js";
 import { openKey, openValue, withFiltersOf, withOpen } from "./open-address.js";
 import { pageKey, withOnlyPage, withPage } from "./page-key.js";
 import { QueryReads } from "./query-reads.js";
+import type { WireText } from "./texts.js";
+import { ToastBoard, type ToastTone, type ToastWire } from "./toasts.js";
 
 export type { Host, HostLocation };
 
@@ -37,6 +39,7 @@ interface Channels {
   rereads: Map<string, Set<() => void>>;
   writes: Map<string, Set<(record: Record<string, unknown>) => void>>;
   validators: Validators;
+  toasts: ToastBoard;
 }
 
 /** The history entry an opening added: the query key of what it opened, none
@@ -98,7 +101,7 @@ export class HostStore {
     readonly prefix: string,
     memory?: { at: HostLocation; shares: HostStore },
   ) {
-    this.channels = memory?.shares.channels ?? { changes: new Map(), kept: new Set(), rereads: new Map(), writes: new Map(), validators: new Validators() };
+    this.channels = memory?.shares.channels ?? { changes: new Map(), kept: new Set(), rereads: new Map(), writes: new Map(), validators: new Validators(), toasts: new ToastBoard() };
     this.queries = memory?.shares.queries ?? new QueryReads(this.fetch, this.onChanged);
     if (memory) {
       this.host = this.hostAt(memory.at);
@@ -110,6 +113,24 @@ export class HostStore {
     this.position = stamped ?? 0;
     if (stamped === undefined) window.history.replaceState({ ...window.history.state, [POSITION]: 0 }, "");
   }
+
+  /** The application's toasts, which a page opened over it posts into too. */
+  get toasts(): ToastBoard {
+    return this.channels.toasts;
+  }
+
+  /** A component's toast: its words as written, its link resolved as `navigate` resolves it. */
+  readonly toast = (options: { text: string; tone?: ToastTone; link?: { to: string; label: string } }): { dismiss(): void } => {
+    const { text, tone = "info", link } = options;
+    const literal = (words: string): WireText => ({ message: words === "" ? [] : [words], lang: "und" });
+    let toLink: ToastWire["link"];
+    if (link !== undefined) {
+      const target = this.resolve(link.to);
+      toLink = { label: literal(link.label), to: { type: "navigate", href: { path: { value: target.path + target.search + target.hash }, pathParams: {}, queryParams: {} } } };
+    }
+    const key = this.toasts.post({ type: "toast", text: literal(text), tone, ...(toLink && { link: toLink }) }, {});
+    return { dismiss: () => this.toasts.withdraw(key) };
+  };
 
   readonly subscribe = (watcher: () => void): (() => void) => {
     this.watchers.add(watcher);
@@ -379,6 +400,7 @@ export class HostStore {
       fetch: this.fetch,
       notifyChanged: this.notifyChanged,
       onChanged: this.onChanged,
+      toast: this.toast,
     };
   }
 

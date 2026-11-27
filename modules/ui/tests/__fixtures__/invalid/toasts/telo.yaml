@@ -1,0 +1,208 @@
+# Toasts and close effects that each write something `telo check` refuses on
+# the line it was written: a close where a destination goes, a call that draws
+# or has no label, a read of `result` in a failure list or of a write the form
+# does not read, lists under a write that has none, an unknown tone, a surface
+# in an effect list, a placeholder nothing fills and inputs that cannot make
+# the call's record.
+kind: Telo.Application
+metadata: { name: UiInvalidToastsApp, version: 1.0.0 }
+lang: en
+imports: { Ui: ../../../../, DataModel: ../../../../../data-model }
+---
+kind: Telo.JsonSchema
+metadata: { name: Project }
+schema:
+  type: object
+  additionalProperties: false
+  required: [id, name]
+  properties: { id: { type: string }, name: { type: string } }
+---
+kind: Telo.JsonSchema
+metadata: { name: ProjectRef }
+schema: { type: object, additionalProperties: false, required: [id], properties: { id: { type: string } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: ProjectName }
+schema: { type: object, additionalProperties: false, required: [name], properties: { name: { type: string } } }
+---
+kind: Ui.Mutation
+metadata: { name: archive }
+inputModel: !ref ProjectRef
+outputModel: !ref Project
+url: /api/projects/archive
+---
+kind: Ui.Mutation
+metadata: { name: restore }
+inputModel: !ref ProjectRef
+url: /api/projects/restore
+---
+kind: Ui.CollectionPresentation
+metadata: { name: projects }
+source:
+  kind: Ui.CollectionSource
+  basePath: /api/projects
+  collection:
+    kind: DataModel.Collection
+    model: !ref Project
+    schemas: { create: !ref ProjectName, update: !ref ProjectName }
+    query: { filters: [], sort: [] }
+---
+kind: Ui.Listing
+metadata: { name: closeAtLink }
+model: !ref Project
+presentation: !ref projects
+rowActions:
+  - mutation: !ref archive
+    inputs: { id: !cel "row.id" }
+    label: Archive
+    onSuccess:
+      - kind: Ui.Toast
+        text: Archived.
+        link: { label: Done, to: { kind: Ui.Close } }
+---
+kind: Ui.Listing
+metadata: { name: callDraws }
+model: !ref Project
+presentation: !ref projects
+rowActions:
+  - mutation: !ref archive
+    inputs: { id: !cel "row.id" }
+    label: Archive
+    onSuccess:
+      - kind: Ui.Toast
+        text: Archived.
+        call:
+          label: Undo
+          mutation: !ref restore
+          inputs: { id: !cel "result.id" }
+          result: [{ type: text, text: Restored }]
+---
+kind: Ui.Listing
+metadata: { name: callUnlabelled }
+model: !ref Project
+presentation: !ref projects
+rowActions:
+  - mutation: !ref archive
+    inputs: { id: !cel "row.id" }
+    label: Archive
+    onSuccess:
+      - kind: Ui.Toast
+        text: Archived.
+        call: { mutation: !ref restore, inputs: { id: !cel "result.id" } }
+---
+kind: Ui.Listing
+metadata: { name: resultInFailure }
+model: !ref Project
+presentation: !ref projects
+rowActions:
+  - mutation: !ref archive
+    inputs: { id: !cel "row.id" }
+    label: Archive
+    onFailure:
+      - kind: Ui.Toast
+        text: { text: "{$name} was not archived.", values: { name: !cel "result.name" } }
+---
+kind: Ui.Listing
+metadata: { name: errorInSuccess }
+model: !ref Project
+presentation: !ref projects
+rowActions:
+  - mutation: !ref archive
+    inputs: { id: !cel "row.id" }
+    label: Archive
+    onSuccess:
+      - kind: Ui.Toast
+        text: { text: "Archived: {$message}", values: { message: !cel "error.message" } }
+---
+kind: Ui.Form
+metadata: { name: createFailure }
+model: !ref ProjectName
+onSubmit:
+  label: Create
+  mutation: { kind: Ui.Mutation, inputModel: !ref ProjectName, outputModel: !ref Project, url: /api/projects }
+  inputs: { name: !cel "values.name" }
+onFailure:
+  - kind: Ui.Toast
+    text: { text: "Could not create {$name}.", values: { name: !cel "result.name" } }
+---
+kind: Ui.Form
+metadata: { name: renameSuccess }
+model: !ref ProjectName
+record: { presentation: !ref projects }
+onSuccess:
+  - kind: Ui.Toast
+    text: { text: "{$name} saved.", values: { name: !cel "result.nme" } }
+---
+kind: Ui.Form
+metadata: { name: listsUnderSubmit }
+model: !ref ProjectName
+onSubmit:
+  label: Create
+  mutation: { kind: Ui.Mutation, inputModel: !ref ProjectName, url: /api/projects }
+  inputs: { name: !cel "values.name" }
+  onSuccess: [{ kind: Ui.Toast, text: Created. }]
+---
+kind: Ui.Form
+metadata: { name: failureUnderRecord }
+model: !ref ProjectName
+record:
+  presentation: !ref projects
+  onFailure: [{ kind: Ui.Toast, text: Failed. }]
+---
+kind: Ui.Form
+metadata: { name: listsWithoutWrite }
+model: !ref ProjectName
+onFailure: [{ kind: Ui.Toast, text: Failed. }]
+---
+kind: Ui.Listing
+metadata: { name: unknownTone }
+model: !ref Project
+presentation: !ref projects
+rowActions:
+  - mutation: !ref archive
+    inputs: { id: !cel "row.id" }
+    label: Archive
+    onSuccess: [{ kind: Ui.Toast, tone: error, text: Archived. }]
+---
+kind: Ui.Listing
+metadata: { name: surfaceEffect }
+model: !ref Project
+presentation: !ref projects
+rowActions:
+  - mutation: !ref archive
+    inputs: { id: !cel "row.id" }
+    label: Archive
+    onSuccess: [{ kind: Ui.Dialog }]
+---
+kind: Ui.Listing
+metadata: { name: placeholderUnbound }
+model: !ref Project
+presentation: !ref projects
+rowActions:
+  - mutation: !ref archive
+    inputs: { id: !cel "row.id" }
+    label: Archive
+    onSuccess:
+      - kind: Ui.Toast
+        text: { text: "{$count} archived.", values: { name: !cel "result.name" } }
+---
+kind: Ui.Listing
+metadata: { name: undoInputs }
+model: !ref Project
+presentation: !ref projects
+rowActions:
+  - mutation: !ref archive
+    inputs: { id: !cel "row.id" }
+    label: Archive
+    onSuccess:
+      - kind: Ui.Toast
+        text: Archived.
+        call: { label: Undo, mutation: !ref restore, inputs: { slug: !cel "result.id" } }
+---
+kind: Ui.Listing
+metadata: { name: deleteResult }
+model: !ref Project
+presentation: !ref projects
+delete:
+  onSuccess: [{ kind: Ui.Toast, text: { text: "{$name} deleted.", values: { name: !cel "row.name" } } }]
+  onFailure: [{ kind: Ui.Toast, text: { text: "{$name} stays: {$message}", values: { name: !cel "result.name", message: !cel "error.message" } } }]

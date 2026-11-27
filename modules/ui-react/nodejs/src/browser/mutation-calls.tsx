@@ -137,7 +137,7 @@ export function useMutationCalls(
     answer(answerKey(index, key), undefined);
     if (inDialog) setAsking({ index, row, key, extra, busy: true });
     // What follows a success is the runner's, so it happens whether or not this place is still drawn.
-    const outcome = await runner.execute(entry, input, { host, prefix, say, destinations, naming: labelOf(entry), opener });
+    const outcome = await runner.execute(entry, input, { host, prefix, say, destinations, naming: labelOf(entry), opener, placed: { ...roots, ...extra, row } });
     hold(key, undefined);
     if (outcome.ok) {
       setAsking(undefined);

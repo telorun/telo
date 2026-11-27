@@ -231,6 +231,7 @@ tokens:
 stylesheets:
   - !module-path ./ui.css
 compactBelow: 48rem
+toaster: { side: top, align: center }
 pageWidth: full
 pages:
   - kind: Ui.Page

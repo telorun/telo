@@ -79,7 +79,7 @@ export function useOpenedPage({
   untitled: string;
   /** The application's texts, which the shell is drawn above. */
   texts: Texts;
-}): { opened: OpenedPage | undefined; outside: PageHost; inside: PageHost; close(): void } {
+}): { opened: OpenedPage | undefined; outside: PageHost; inside: PageHost; close(): void; closeOf(page: HostStore): () => void } {
   const [opened, setOpened] = useState<OpenedPage>();
   // What is open now, ahead of the render that draws it.
   const held = useRef<OpenedPage | undefined>(undefined);
@@ -127,7 +127,7 @@ export function useOpenedPage({
         naming: opening.naming,
         opener: inside && current !== undefined ? current.opener : opening.opener,
         detail: inside && current !== undefined ? current.detail : opening.detail,
-        placed: inside && current !== undefined ? current.placed : (opening.opener?.isConnected ?? false) || opening.detail !== undefined,
+        placed: inside && current !== undefined ? current.placed : !opening.unplaced && ((opening.opener?.isConnected ?? false) || opening.detail !== undefined),
         busy: { current: false },
         on,
         store: pageStore(opening.address, name, on),
@@ -150,6 +150,11 @@ export function useOpenedPage({
     const pending = current.store.pending();
     if (pending.length > 0) store.ask(pending, perform);
     else perform();
+  };
+
+  /** What closes the page opened at `page`, if it is still the one open. */
+  const closeOf = (page: HostStore) => () => {
+    if (held.current?.store === page) close();
   };
 
   // Closed by the address: its key gone or changed, or — held in memory — the page it was opened on left.
@@ -209,7 +214,7 @@ export function useOpenedPage({
 
   const outside = useMemo<PageHost>(() => ({ open: (opening) => open(opening, false) }), [store]);
   const inside = useMemo<PageHost>(() => ({ open: (opening) => open(opening, true) }), [store]);
-  return { opened, outside, inside, close };
+  return { opened, outside, inside, close, closeOf };
 }
 
 /** Where the viewer is, beside the application: the address of the page open over it. */
@@ -244,6 +249,7 @@ export function OpenedPageSurface({
   accept,
   refreshes,
   onClose,
+  closeOf,
 }: {
   opened: OpenedPage;
   /** The pages the application declares: their paths and titles. */
@@ -254,6 +260,7 @@ export function OpenedPageSurface({
   /** Bumped whenever what was fetched may be stale. */
   refreshes: number;
   onClose: () => void;
+  closeOf: (page: HostStore) => () => void;
 }): ReactNode {
   const environment = useContext(RendererContext);
   const texts = useContext(TextsContext);
@@ -290,6 +297,7 @@ export function OpenedPageSurface({
         accept={accept}
         refreshes={refreshes}
         onClose={onClose}
+        closeOf={closeOf}
       />
     </Surface>
   );
@@ -332,6 +340,7 @@ function OpenedPageContent({
   accept,
   refreshes,
   onClose,
+  closeOf,
 }: {
   opened: OpenedPage;
   declaredPath: string | undefined;
@@ -340,6 +349,7 @@ function OpenedPageContent({
   accept: <T extends { bundle: string }>(document: T) => T | undefined;
   refreshes: number;
   onClose: () => void;
+  closeOf: (page: HostStore) => () => void;
 }): ReactNode {
   const environment = useContext(RendererContext);
   const say = useSay();
@@ -348,7 +358,7 @@ function OpenedPageContent({
   const [drawing, setDrawing] = useState<Drawing>();
   const held = useRef<PageDocument | undefined>(undefined);
   const closing = useMemo(() => ({ close: onClose, busy: (busy: boolean) => void (opened.busy.current = busy) }), [onClose, opened]);
-  const runner = useMemo(() => new MutationRunner(), []);
+  const runner = useMemo(() => new MutationRunner(closeOf(opened.store)), [opened.store]);
   // A page opened over another keeps its forms' records apart from the page under it.
   const forms = useMemo(() => new FormRecords(), []);
   const url = `${environment.prefix}/_telo/ui/page?path=${encodeURIComponent(path)}`;

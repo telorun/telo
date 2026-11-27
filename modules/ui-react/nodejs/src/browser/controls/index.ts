@@ -1,5 +1,5 @@
 /**
- * The built-in controls: the reference implementation of `ui_react_controls-4`,
+ * The built-in controls: the reference implementation of `ui_react_controls-5`,
  * drawn wherever no theme replaces a control. This directory is the only part
  * of the renderer that reaches the interactive primitives, the icon set and the
  * browser's own entry elements.
@@ -17,6 +17,7 @@ import { Confirmation, Dialog, Drawer, Popover } from "./overlays.js";
 import { MultiSelect, Select } from "./select.js";
 import { Tabs } from "./tabs.js";
 import { TagsInput } from "./tags-input.js";
+import { Toaster } from "./toaster.js";
 import { Tooltip } from "./tooltip.js";
 
 export const BUILT_IN_CONTROLS: Controls = {
@@ -42,6 +43,7 @@ export const BUILT_IN_CONTROLS: Controls = {
   Confirmation,
   Menu,
   Tooltip,
+  Toaster,
   Navigation,
   Tabs,
   Icon,

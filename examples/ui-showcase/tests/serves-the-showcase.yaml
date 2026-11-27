@@ -373,7 +373,7 @@ steps:
           - [ renderer.css, default-theme.css, showcase.css ]
         sets:
           - []
-          - &radixControls [ [ Select, MultiSelect, Combobox, Listbox, Checkbox, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Navigation, Tabs, Icon ] ]
+          - &radixControls [ [ Select, MultiSelect, Combobox, Listbox, Checkbox, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Toaster, Navigation, Tabs, Icon ] ]
           - *radixControls
           - []
         vary:
@@ -934,7 +934,7 @@ steps:
             - openPage
             - { value: "/tasks/{id}" }
             - *dialog
-          delete: true
+          delete: { onSuccess: [], onFailure: [] }
         written:
           pageSize: 8
           rowStyle: { by: { root: row, path: [ blocked ] }, cases: { "true": [ strong, danger ] } }
@@ -966,13 +966,13 @@ steps:
             - { type: dialog, size: small, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
             - openPage
             - { type: dialog, size: large, modal: false, dismiss: { escape: true, outside: false, closeButton: true }, address: { name: taskDialog } }
-            - true
+            - { onSuccess: [], onFailure: [] }
           # Drawers.
           - - openPage
             - { type: drawer, side: start, size: small, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
             - openPage
             - { type: drawer, side: end, size: large, modal: true, dismiss: { escape: true, outside: true, closeButton: false } }
-            - true
+            - { onSuccess: [], onFailure: [] }
           # Sheets.
           - - openPage
             - { type: drawer, side: top, size: medium, modal: false, dismiss: { escape: true, outside: true, closeButton: true } }
@@ -995,7 +995,7 @@ steps:
               compact: { type: drawer, side: bottom, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
             - openPage
             - { type: inline }
-            - true
+            - { onSuccess: [], onFailure: [] }
           # Panels.
           - - openPage
             - { type: panel, side: start, size: small, dismiss: { escape: false, closeButton: true } }
@@ -1542,7 +1542,7 @@ steps:
           - components.js
           - { basePath: { value: /api/tasks }, countsPath: { value: /api/task-counts }, project: { value: TEL-42 } }
           - [ components.css ]
-        table: [ /api/tasks, { projectCode: { value: TEL-42 } }, 6, true, true ]
+        table: [ /api/tasks, { projectCode: { value: TEL-42 } }, 6, true, { onSuccess: [], onFailure: [] } ]
         cell:
           - Priority
           - PriorityMeter
@@ -1576,7 +1576,7 @@ steps:
         table:
           - /api/tasks
           - id
-          - true
+          - { onSuccess: [], onFailure: [] }
           - [ title, projectCode, assigneeEmail, status, priority, estimate, dueOn, label, blocked ]
         create: [ openPage, { value: /tasks/new }, drawer, end ]
         edit: [ openPage, panel, { name: crudTask } ]

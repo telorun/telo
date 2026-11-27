@@ -1,0 +1,8 @@
+units:
+  modules/ui: Added
+body: "Toasts: the Ui.Toast and Ui.Close effects, Ui.MutationPress as the shared press
+  shape Ui.MutationCall extends, onFailure beside every onSuccess (calls, Ui.Move,
+  Ui.Form), the toaster keyed text in all fifteen catalogs, and conformance/toasts.json
+  for renderers to read. Breaking: Ui.Listing delete takes false, true or { onSuccess,
+  onFailure }, and its wire is now false or { onSuccess, onFailure }, true arriving as
+  the empty object form."

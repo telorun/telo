@@ -16,6 +16,7 @@ import { queryRoot } from "./query-root.js";
 import { RendererContext, RootsContext, type RendererEnvironment } from "./renderer-context.js";
 import { Confirmation } from "./surface.js";
 import { errorSpec, type ErrorSpec } from "./ui-error.js";
+import { DEFAULT_TOASTER, ToasterHost, type ToasterPlacement } from "./toaster-host.js";
 import { formatOwn, formatText, NO_TEXTS, TextsContext, type Texts, type TranslatedText } from "./texts.js";
 
 interface AppDocument {
@@ -36,6 +37,8 @@ interface AppDocument {
   controls: ControlsField;
   /** The viewport width below which every compact surface applies, a CSS length. */
   compactBelow: string;
+  /** Where the application's toaster sits; bottom and end when not given. */
+  toaster?: ToasterPlacement;
 }
 
 export interface AppProps {
@@ -339,8 +342,9 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
           </main>
         </LayoutFrame>
         {pages.opened && app && (
-          <OpenedPageSurface opened={pages.opened} pages={app.pages} inside={pages.inside} accept={accept} refreshes={refreshes} onClose={pages.close} />
+          <OpenedPageSurface opened={pages.opened} pages={app.pages} inside={pages.inside} accept={accept} refreshes={refreshes} onClose={pages.close} closeOf={pages.closeOf} />
         )}
+        {app && <ToasterHost placement={app.toaster ?? DEFAULT_TOASTER} runner={runner} />}
       </PageHostContext.Provider>
         {asking && (
           <Confirmation

@@ -11,6 +11,7 @@ An application of pages. A `Telo.Mount`: list it under an `Http.Server`'s
 | `stylesheets` | | your own stylesheets, as host paths: `!module-path ./ui.css` |
 | `compactBelow` | `40rem` | the viewport width below which every surface's `compact` replacement applies: a CSS length in `px`, `rem` or `em` |
 | `pageWidth` | `contained` | how wide a page's content is drawn when the page declares no `width`: `contained` or `full` — see [Page width](#page-width) |
+| `toaster` | `{ side: bottom, align: end }` | where the application's one [toaster](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) sits: `side` `top` or `bottom` of the viewport and `align` `start`, `center` or `end` along it; below the breakpoint it spans the width at its edge |
 | `layout` | | the [`Ui.PageLayout`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/) every page is drawn in, unless its `pages` entry names another — see [Layouts](#layouts); omitted, pages are drawn with no chrome |
 | `pages` | required, at least one | each entry a [`Ui.Page`](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/), written in place or `!ref`, or a `Ui.PageRoute` `{ page, layout }` |
 | `notFound` | | nodes drawn, inside the layout, for a path no page serves — see [Not found](#not-found) |

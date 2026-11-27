@@ -30,7 +30,7 @@ reference; its brand stays its own.
 | Resource | Is |
 | --- | --- |
 | [`Radix.theme`](docs/theme.md#the-theme) | A `UiReact.Theme`: the look, the brand's defaults, and the controls below. |
-| [`Radix.controls`](docs/theme.md#the-controls) | A `UiReact.Controls` set: `Select`, `MultiSelect`, `Listbox`, `Checkbox`, `Dialog`, `Drawer`, `Popover`, `Confirmation`, `Menu`, `Tooltip`, `Navigation`, `Tabs`, `Icon`. |
+| [`Radix.controls`](docs/theme.md#the-controls) | A `UiReact.Controls` set: `Select`, `MultiSelect`, `Combobox`, `Listbox`, `Checkbox`, `Dialog`, `Drawer`, `Popover`, `Confirmation`, `Menu`, `Tooltip`, `Toaster`, `Navigation`, `Tabs`, `Icon`. |
 
 ## Example
 

@@ -165,7 +165,7 @@ steps:
         })
       expected:
         members: [action, button, fill, type]
-        callMembers: [failure, inputs, label, mutation, onSuccess, prompt]
+        callMembers: [failure, inputs, label, mutation, onFailure, onSuccess, prompt]
         inputs:
           id: { root: params, path: [id] }
           decision: { value: approve }

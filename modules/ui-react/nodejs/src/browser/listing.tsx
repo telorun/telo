@@ -12,7 +12,7 @@ import { TableLayout } from "./layouts/table-layout.js";
 import { readMode, readPositions, useGroupValues, useListingReads, type GroupValues, type ListedRecord, type ReadView } from "./listing-engine.js";
 import type { ListingReads, ReadPlan, ReadPosition } from "./listing-reads.js";
 import { ErrorNode, Node, type SpecNode } from "./nodes.js";
-import type { MutationCallSpec } from "./mutation-call.js";
+import { MutationRunnerContext, type EffectSpec, type MutationCallSpec } from "./mutation-call.js";
 import type { OptionSourceSpec } from "./option-source.js";
 import { queryRoot } from "./query-root.js";
 import { heldValues, RelatedContext, useRelatedLabels, type RelatedLabels } from "./related-labels.js";
@@ -205,6 +205,7 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
 
   const text = useText();
   const destinations = useDestinationContext();
+  const runner = useContext(MutationRunnerContext);
   const [removing, setRemoving] = useState<ListedRecord>();
   // The record an inline surface is drawn under, and who is told where its place is.
   const [detailing, setDetailing] = useState<{ key: string; report: (element: HTMLElement | null) => void }>();
@@ -238,7 +239,7 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
   const itemUrl = (key: string) => underMount(prefix, itemPath(key));
   const creates = (node.create ?? undefined) as PressSpec | undefined;
   const edits = (node.edit ?? undefined) as PressSpec | undefined;
-  const hasActions = (node.rowActions as MutationCallSpec[]).length > 0 || edits !== undefined || node.delete === true;
+  const hasActions = (node.rowActions as MutationCallSpec[]).length > 0 || edits !== undefined || Boolean(node.delete);
   const shownActions = useRowActionsDisplay(
     node.rowActionsDisplay as ActionsSetting,
     `${records.map((record) => record.key).join("\u0000")}|${(node.rowActions as MutationCallSpec[]).length}|${edits ? 1 : 0}|${node.delete ? 1 : 0}`,
@@ -264,10 +265,14 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
     writing.current = true;
     setDeleting(true);
     setDeleteFailure(undefined);
+    const effects = node.delete as { onSuccess: EffectSpec[]; onFailure: EffectSpec[] };
+    const env = { host, prefix, say, destinations, naming: say("delete") };
     try {
       await send(host, itemUrl(record.key), { method: "DELETE" });
     } catch (error) {
-      setDeleteFailure(errorSpec(error, "ERR_UI_REQUEST_FAILED"));
+      const failed = errorSpec(error, "ERR_UI_REQUEST_FAILED");
+      setDeleteFailure(failed);
+      runner.run(effects.onFailure, { ...rowRoots, row: record.row, error: failed }, env);
       // A record changed since it was read: the listing reads it again.
       if (error instanceof UiError && error.status === 412) host.notifyChanged(collectionPath);
       return;
@@ -278,6 +283,7 @@ export function Listing({ node, embedded = false }: { node: SpecNode; embedded?:
     setRemoving(undefined);
     host.notifyChanged(collectionPath);
     host.notifyChanged(itemPath(record.key));
+    runner.run(effects.onSuccess, { ...rowRoots, row: record.row }, env);
   };
 
   // A record's answers last while its key is drawn.

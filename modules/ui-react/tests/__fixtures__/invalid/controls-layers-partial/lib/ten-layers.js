@@ -1,8 +1,9 @@
-// The nine layer controls of the third generation, without the combobox.
+// The ten layer controls of the fourth generation, without the toaster.
 const none = () => null;
 
 export const Select = none;
 export const MultiSelect = none;
+export const Combobox = none;
 export const Dialog = none;
 export const Drawer = none;
 export const Popover = none;

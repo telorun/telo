@@ -1,0 +1,6 @@
+units:
+  apps/authoring-agent: Added
+body: "The agent's primer teaches toasts: the Ui.Toast and Ui.Close effects, onFailure
+  beside every onSuccess, Ui.MutationPress for a toast's Undo or Retry,
+  UiReact.App.toaster, and that a toast is never the only record of an outcome nor the
+  only way to act on one."

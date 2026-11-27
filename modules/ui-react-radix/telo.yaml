@@ -9,25 +9,26 @@ metadata:
     A complete look for web interfaces built from page descriptions, with its
     selects, multi-selects, search boxes with suggestion lists, option lists,
     checkboxes, dialogs, drawers, popovers, confirmations, menus, navigation
-    menus, tabs, tooltips and icons drawn by Radix's accessible primitives.
+    menus, tabs, tooltips, notification toasts and icons drawn by Radix's
+    accessible primitives.
     Picked by one theme reference; a theme of another module can take its
     controls whole and give them a look of its own.
 requires: { telo: ">=0.141.0" }
 imports: { Ui: ../ui, UiReact: ../ui-react }
 exports:
   resources: [controls, theme]
-  # The fourteen controls, on one copy of the primitives: every layer a page
+  # The fifteen controls, on one copy of the primitives: every layer a page
   # opens is drawn by it, so its layers compose among themselves.
   browser:
     - specifier: "@telorun/ui-react-radix"
       path: ./browser/ui-react-radix.js
       source: ./nodejs/src/controls/index.ts
-      abi: ui_react_controls-4
+      abi: ui_react_controls-5
       external: [react, react/jsx-runtime, react-dom]
       exports:
         [
         Select, MultiSelect, Combobox, Listbox, Checkbox, Dialog, Drawer, Popover, Confirmation,
-        Menu, Tooltip, Navigation, Tabs, Icon,
+        Menu, Tooltip, Toaster, Navigation, Tabs, Icon,
         ]
 ---
 kind: UiReact.Controls
@@ -36,7 +37,7 @@ entry: "@telorun/ui-react-radix"
 implements:
   [
   Select, MultiSelect, Combobox, Listbox, Checkbox, Dialog, Drawer, Popover, Confirmation, Menu,
-  Tooltip, Navigation, Tabs, Icon,
+  Tooltip, Toaster, Navigation, Tabs, Icon,
   ]
 ---
 # Every part styled over the renderer's part names, light and dark, with the

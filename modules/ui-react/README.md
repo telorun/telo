@@ -62,13 +62,14 @@ by a React renderer this module ships prebuilt.
 - **Styling is a published contract.** Every element carries a stable part
   name; your stylesheet is applied last and always wins.
 - **Controls behind a contract.** Every interactive leaf — text boxes, choices,
-  lists, dialogs, menus, navigation, tabs, tooltips, glyphs — is drawn through
+  lists, dialogs, menus, navigation, tabs, tooltips, toasts, glyphs — is drawn through
   one published
   [controls contract](docs/controls-abi.md), with its behaviour as data and an
   interpreter to check an implementation against it; the built-ins are its
   reference implementation.
 - **Accessible controls.** Dialogs trap the focus and close on Escape, choice
-  lists and checkboxes work from the keyboard, and icon buttons are named —
+  lists and checkboxes work from the keyboard, toasts are announced and
+  reached with F8 without closing what is open, and icon buttons are named —
   in a light and a dark scheme that follow the viewer's system.
 - **Forms open where the manifest says.** Every [surface](https://hub.telo.run/module/oci/ghcr.io/telorun/ui/)
   is drawn — dialog, drawer, popover, inline, panel, page — with an open form

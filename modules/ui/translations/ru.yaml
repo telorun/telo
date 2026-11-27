@@ -35,6 +35,7 @@ messages:
   siteNavigation: Сайт
   collapseNavigation: Свернуть навигацию
   expandNavigation: Развернуть навигацию
+  toaster: Уведомления
   search: "Поиск: {$label}"
   remove: "Удалить: {$label}"
   clear: "Очистить: {$label}"

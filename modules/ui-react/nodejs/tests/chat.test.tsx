@@ -333,6 +333,7 @@ describe("a copy button", () => {
     expect(button().getAttribute("aria-label")).toBe("Copied");
     expect(button().querySelector(".lucide-check")).not.toBeNull();
     expect(announcer(r)).toBe("Copied");
+    expect(document.querySelectorAll('[data-telo-part="toast"]')).toHaveLength(0);
     await act(async () => void vi.advanceTimersByTime(2000));
     expect(button().getAttribute("aria-label")).toBe("Copy message");
     expect(button().querySelector(".lucide-copy")).not.toBeNull();
@@ -341,6 +342,8 @@ describe("a copy button", () => {
     expect(button().getAttribute("aria-label")).toBe("Copy message");
     expect(announcer(r)).toBe("");
     expect(r.container.textContent).toContain("ERR_UI_COPY_FAILED");
+    // The copy and its failure stay where they happen: the toaster holds nothing.
+    expect(document.querySelectorAll('[data-telo-part="toast"]')).toHaveLength(0);
   });
 });
 

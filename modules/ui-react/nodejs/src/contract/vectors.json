@@ -1065,6 +1065,630 @@
       }
     ]
   },
+  "Toaster": {
+    "props": {
+      "items": [
+        {
+          "key": "saved",
+          "tone": "success",
+          "children": {
+            "element": "div",
+            "children": [
+              {
+                "element": "p",
+                "attributes": {
+                  "data-telo-part": "toast-text"
+                },
+                "text": "Apollo archived."
+              },
+              {
+                "element": "div",
+                "attributes": {
+                  "data-telo-part": "toast-actions"
+                },
+                "children": [
+                  {
+                    "element": "button",
+                    "attributes": {
+                      "id": "undo"
+                    },
+                    "text": "Undo"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "key": "failed",
+          "tone": "danger",
+          "children": {
+            "element": "div",
+            "children": [
+              {
+                "element": "p",
+                "attributes": {
+                  "data-telo-part": "toast-text"
+                },
+                "text": "Could not archive."
+              },
+              {
+                "element": "div",
+                "attributes": {
+                  "data-telo-part": "toast-actions"
+                },
+                "children": [
+                  {
+                    "element": "button",
+                    "attributes": {
+                      "id": "retry"
+                    },
+                    "text": "Retry"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "side": "bottom",
+      "align": "end",
+      "label": "Notifications",
+      "dismissLabel": "Dismiss"
+    },
+    "vectors": [
+      {
+        "name": "is a region at the end of the page named by its label, each toast marked by its tone, and posting moves no focus",
+        "steps": [
+          {
+            "expect": {
+              "outside": [
+                {
+                  "part": "toaster"
+                }
+              ],
+              "focus": {
+                "element": "opener"
+              },
+              "attributes": [
+                {
+                  "of": {
+                    "part": "toaster"
+                  },
+                  "name": "role",
+                  "value": "region"
+                },
+                {
+                  "of": {
+                    "part": "toaster"
+                  },
+                  "name": "aria-label",
+                  "value": "Notifications"
+                },
+                {
+                  "of": {
+                    "part": "toaster"
+                  },
+                  "name": "data-side",
+                  "value": "bottom"
+                },
+                {
+                  "of": {
+                    "part": "toaster"
+                  },
+                  "name": "data-align",
+                  "value": "end"
+                },
+                {
+                  "of": {
+                    "part": "toast",
+                    "index": 0
+                  },
+                  "name": "data-tone",
+                  "value": "success"
+                },
+                {
+                  "of": {
+                    "part": "toast",
+                    "index": 0
+                  },
+                  "name": "data-state",
+                  "value": "open"
+                },
+                {
+                  "of": {
+                    "part": "toast",
+                    "index": 1
+                  },
+                  "name": "data-tone",
+                  "value": "danger"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "announces each toast once as it arrives, a danger one assertively and the others politely",
+        "props": {
+          "items": []
+        },
+        "steps": [
+          {
+            "props": {
+              "items": [
+                {
+                  "key": "saved",
+                  "tone": "success",
+                  "children": {
+                    "element": "div",
+                    "children": [
+                      {
+                        "element": "p",
+                        "attributes": {
+                          "data-telo-part": "toast-text"
+                        },
+                        "text": "Apollo archived."
+                      },
+                      {
+                        "element": "div",
+                        "attributes": {
+                          "data-telo-part": "toast-actions"
+                        },
+                        "children": [
+                          {
+                            "element": "button",
+                            "attributes": {
+                              "id": "undo"
+                            },
+                            "text": "Undo"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "expect": {
+              "text": [
+                {
+                  "of": {
+                    "role": "status"
+                  },
+                  "value": "Apollo archived. Undo"
+                }
+              ]
+            }
+          },
+          {
+            "props": {
+              "items": [
+                {
+                  "key": "saved",
+                  "tone": "success",
+                  "children": {
+                    "element": "div",
+                    "children": [
+                      {
+                        "element": "p",
+                        "attributes": {
+                          "data-telo-part": "toast-text"
+                        },
+                        "text": "Apollo archived."
+                      },
+                      {
+                        "element": "div",
+                        "attributes": {
+                          "data-telo-part": "toast-actions"
+                        },
+                        "children": [
+                          {
+                            "element": "button",
+                            "attributes": {
+                              "id": "undo"
+                            },
+                            "text": "Undo"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": "failed",
+                  "tone": "danger",
+                  "children": {
+                    "element": "div",
+                    "children": [
+                      {
+                        "element": "p",
+                        "attributes": {
+                          "data-telo-part": "toast-text"
+                        },
+                        "text": "Could not archive."
+                      },
+                      {
+                        "element": "div",
+                        "attributes": {
+                          "data-telo-part": "toast-actions"
+                        },
+                        "children": [
+                          {
+                            "element": "button",
+                            "attributes": {
+                              "id": "retry"
+                            },
+                            "text": "Retry"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "expect": {
+              "text": [
+                {
+                  "of": {
+                    "role": "alert"
+                  },
+                  "value": "Could not archive. Retry"
+                },
+                {
+                  "of": {
+                    "role": "status"
+                  },
+                  "value": "Apollo archived. Undo"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "brings the focus in on F8, walks its buttons with Tab, and gives the focus back where F8 took it from past either end",
+        "steps": [
+          {
+            "key": "F8"
+          },
+          {
+            "expect": {
+              "focus": {
+                "part": "toaster"
+              },
+              "intents": [
+                [
+                  "onPauseChange",
+                  true
+                ]
+              ]
+            }
+          },
+          {
+            "key": "Tab"
+          },
+          {
+            "expect": {
+              "focus": {
+                "id": "undo"
+              }
+            }
+          },
+          {
+            "key": "Tab"
+          },
+          {
+            "expect": {
+              "focus": {
+                "tag": "button",
+                "attributes": {
+                  "aria-label": "Dismiss"
+                },
+                "index": 0
+              }
+            }
+          },
+          {
+            "key": "Tab"
+          },
+          {
+            "expect": {
+              "focus": {
+                "id": "retry"
+              }
+            }
+          },
+          {
+            "key": "Tab"
+          },
+          {
+            "expect": {
+              "focus": {
+                "tag": "button",
+                "attributes": {
+                  "aria-label": "Dismiss"
+                },
+                "index": 1
+              }
+            }
+          },
+          {
+            "key": "Tab"
+          },
+          {
+            "expect": {
+              "focus": {
+                "element": "opener"
+              },
+              "intents": [
+                [
+                  "onPauseChange",
+                  false
+                ]
+              ]
+            }
+          },
+          {
+            "key": "F8"
+          },
+          {
+            "key": "Tab"
+          },
+          {
+            "key": "Tab",
+            "shift": true
+          },
+          {
+            "expect": {
+              "focus": {
+                "element": "opener"
+              },
+              "intents": [
+                [
+                  "onPauseChange",
+                  true
+                ],
+                [
+                  "onPauseChange",
+                  false
+                ]
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "dismisses the toast holding the focus on Escape, the focus moving to the next toast and then back where F8 took it from",
+        "steps": [
+          {
+            "key": "F8"
+          },
+          {
+            "key": "Tab"
+          },
+          {
+            "key": "Escape"
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onPauseChange",
+                  true
+                ],
+                [
+                  "onDismiss",
+                  "saved",
+                  "escape"
+                ]
+              ],
+              "focus": {
+                "part": "toast",
+                "index": 1
+              }
+            }
+          },
+          {
+            "props": {
+              "items": [
+                {
+                  "key": "failed",
+                  "tone": "danger",
+                  "children": {
+                    "element": "div",
+                    "children": [
+                      {
+                        "element": "p",
+                        "attributes": {
+                          "data-telo-part": "toast-text"
+                        },
+                        "text": "Could not archive."
+                      },
+                      {
+                        "element": "div",
+                        "attributes": {
+                          "data-telo-part": "toast-actions"
+                        },
+                        "children": [
+                          {
+                            "element": "button",
+                            "attributes": {
+                              "id": "retry"
+                            },
+                            "text": "Retry"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "expect": {
+              "focus": {
+                "part": "toast"
+              }
+            }
+          },
+          {
+            "key": "Escape"
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onDismiss",
+                  "failed",
+                  "escape"
+                ],
+                [
+                  "onPauseChange",
+                  false
+                ]
+              ],
+              "focus": {
+                "element": "opener"
+              }
+            }
+          },
+          {
+            "props": {
+              "items": []
+            }
+          },
+          {
+            "expect": {
+              "absent": [
+                {
+                  "part": "toast"
+                }
+              ],
+              "focus": {
+                "element": "opener"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": "gives the focus back on Escape in the region itself, dismissing nothing",
+        "steps": [
+          {
+            "key": "F8"
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onPauseChange",
+                  true
+                ]
+              ],
+              "focus": {
+                "part": "toaster"
+              }
+            }
+          },
+          {
+            "key": "Escape"
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onPauseChange",
+                  false
+                ]
+              ],
+              "focus": {
+                "element": "opener"
+              },
+              "present": [
+                {
+                  "part": "toast",
+                  "index": 1
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "asks to dismiss a toast with close when its dismiss button is pressed",
+        "steps": [
+          {
+            "click": {
+              "tag": "button",
+              "attributes": {
+                "aria-label": "Dismiss"
+              },
+              "index": 1
+            }
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onPauseChange",
+                  true
+                ],
+                [
+                  "onDismiss",
+                  "failed",
+                  "close"
+                ]
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "asks to pause while the pointer is over it, and to go on once it has left",
+        "steps": [
+          {
+            "hover": {
+              "part": "toast",
+              "index": 0
+            }
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onPauseChange",
+                  true
+                ]
+              ]
+            }
+          },
+          {
+            "leave": {
+              "part": "toast",
+              "index": 0
+            }
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onPauseChange",
+                  false
+                ]
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
   "Navigation": {
     "props": {
       "layout": "horizontal",

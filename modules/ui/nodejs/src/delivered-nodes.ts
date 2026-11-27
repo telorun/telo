@@ -53,6 +53,7 @@ const JUDGED_ANSWER = {
   },
   prompt: null,
   onSuccess: [],
+  onFailure: [],
   failure: JUDGED,
 };
 

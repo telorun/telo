@@ -3,7 +3,7 @@ import { NavigationMenu, Portal } from "radix-ui";
 import { Popper } from "radix-ui/internal";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react";
 import type { CloseReason, NavigationEntry, NavigationProps } from "../../../../ui-react/nodejs/src/contract/ui-react-controls.js";
-import { inLaterLayer, leaveClosing, useMarkedContent } from "./layers.js";
+import { inLaterLayer, leaveClosing, useMarkedContent, vetoInToaster } from "./layers.js";
 
 /** What every entry of one navigation reads. */
 interface Scope {
@@ -325,6 +325,7 @@ function Panel({ entries, chain, trigger, scope, reason }: { entries: Navigation
           onPointerEnter={still}
           onPointerLeave={still}
           onEscapeKeyDown={(event) => {
+            if (vetoInToaster(event)) return;
             if (outermost) {
               reason.current = "escape";
               return;
@@ -334,6 +335,7 @@ function Panel({ entries, chain, trigger, scope, reason }: { entries: Navigation
             scope.onOpenChange(holding, "escape");
           }}
           onPointerDownOutside={(event) => {
+            if (vetoInToaster(event)) return;
             const target = event.target;
             const own = scope.root.current?.contains(target as Node | null) || inLaterLayer(content.current, target);
             if (outermost) {
@@ -344,6 +346,7 @@ function Panel({ entries, chain, trigger, scope, reason }: { entries: Navigation
             }
           }}
           onFocusOutside={(event) => {
+            if (vetoInToaster(event)) return;
             const target = event.target;
             const own = scope.root.current?.contains(target as Node | null) || inLaterLayer(content.current, target);
             if (outermost) {

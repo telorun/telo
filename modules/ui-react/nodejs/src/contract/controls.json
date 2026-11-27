@@ -1,7 +1,7 @@
 {
-  "generation": "ui_react_controls-4",
+  "generation": "ui_react_controls-5",
   "supplied": ["react", "react/jsx-runtime", "react-dom"],
-  "stateAttributes": ["data-state", "data-invalid", "data-placeholder", "data-highlighted", "data-current", "data-layout", "data-fill"],
+  "stateAttributes": ["data-state", "data-invalid", "data-placeholder", "data-highlighted", "data-current", "data-layout", "data-fill", "data-tone"],
   "icons": [
     "add",
     "alert",
@@ -356,6 +356,22 @@
       "states": [{ "attribute": "data-state", "values": ["closed", "delayed-open", "instant-open"], "on": ["$root"] }],
       "semantics": false,
       "portal": ["tooltip"]
+    },
+    "Toaster": {
+      "group": "overlay",
+      "layer": true,
+      "description": "The application's notifications at one edge of the page, outside every other layer: each its text, its buttons and a dismiss button, announced as it arrives and reached with F8.",
+      "props": ["items", "side", "align", "label", "dismissLabel", "onDismiss", "onPauseChange"],
+      "roots": ["toaster"],
+      "rootProp": null,
+      "subParts": ["toast", "icon"],
+      "intents": { "onDismiss": null, "onPauseChange": null },
+      "states": [
+        { "attribute": "data-state", "values": ["open", "closed"], "on": ["toast"] },
+        { "attribute": "data-tone", "values": ["info", "success", "warning", "danger"], "on": ["toast"] }
+      ],
+      "semantics": false,
+      "portal": ["toaster"]
     },
     "Navigation": {
       "group": "navigation",

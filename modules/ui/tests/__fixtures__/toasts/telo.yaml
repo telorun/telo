@@ -1,0 +1,227 @@
+kind: Telo.Application
+metadata: { name: ProjectToasts }
+lang: en
+imports:
+  Http: ../../../../http-server
+  Ui: ../../../
+  UiReact: ../../../../ui-react
+  DataModel: ../../../../data-model
+ports: { http: { env: PORT, protocol: tcp, default: 8170 } }
+targets:
+  - !ref server
+---
+kind: Telo.JsonSchema
+metadata: { name: Project }
+schema:
+  type: object
+  additionalProperties: false
+  required: [id, name, archived]
+  properties: { id: { type: string }, name: { type: string, title: Name }, archived: { type: boolean, title: Archived } }
+---
+kind: Telo.JsonSchema
+metadata: { name: ProjectRef }
+schema: { type: object, additionalProperties: false, required: [id], properties: { id: { type: string } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: ProjectName }
+schema: { type: object, additionalProperties: false, required: [name], properties: { name: { type: string, title: Name, minLength: 1 } } }
+---
+# Named: the row action, its Retry and the project page's button run it.
+kind: Ui.Mutation
+metadata: { name: archiveProject }
+inputModel: !ref ProjectRef
+outputModel: !ref Project
+url: { path: "/api/projects/{id}/archive", pathParams: { id: !cel "input.id" } }
+invalidates: [/api/projects]
+---
+# Named: the Undo and the Archived page's Restore run it.
+kind: Ui.Mutation
+metadata: { name: restoreProject }
+inputModel: !ref ProjectRef
+url: { path: "/api/projects/{id}/restore", pathParams: { id: !cel "input.id" } }
+invalidates: [/api/projects]
+---
+kind: Ui.CollectionPresentation
+metadata: { name: projectsPresentation }
+source:
+  kind: Ui.CollectionSource
+  basePath: /api/projects
+  collection:
+    kind: DataModel.Collection
+    model: !ref Project
+    key: id
+    query: { filters: [{ property: archived, operator: eq }], sort: [] }
+    schemas: { create: !ref ProjectName, update: !ref ProjectName }
+---
+# Named: the listing's edit press, the archive toast's View and the pages list name it.
+kind: Ui.Page
+metadata: { name: projectPage }
+path: /projects/{id}
+title: Project
+children:
+  - type: query
+    query:
+      kind: Ui.Query
+      model: !ref Project
+      url: { path: "/api/projects/{id}", pathParams: { id: !cel "params.id" } }
+    content:
+      - type: composite
+        ref:
+          kind: Ui.Form
+          model: !ref ProjectName
+          initialValues: !cel "data"
+          record: { presentation: !ref projectsPresentation, key: !cel "params.id" }
+          # After afterSubmit: the drawer closes, the page of its own stays.
+          onSuccess: [{ kind: Ui.Toast, text: Saved. }]
+      - type: button
+        action:
+          mutation: !ref archiveProject
+          inputs: { id: !cel "params.id" }
+          label: Archive
+          onSuccess:
+            - { kind: Ui.Close }
+            - kind: Ui.Toast
+              text: { text: "{$name} archived.", values: { name: !cel "result.name" } }
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { method: GET, path: /projects }
+    handler:
+      kind: Telo.Value
+      value: { rows: [{ id: "1", name: Apollo, archived: false }, { id: "2", name: Gemini, archived: false }], total: 2, next: null }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rows, total]
+              properties: { rows: { type: array, items: !ref Project }, total: { type: integer }, next: { type: [string, "null"] } }
+            body: !cel "result"
+  - request: { method: GET, path: "/projects/{id}" }
+    handler: { kind: Telo.Value, value: { id: "1", name: Apollo, archived: false } }
+    returns: [{ status: 200, content: { application/json: { schema: !ref Project, body: !cel "result" } } }]
+  - request: { method: POST, path: /projects }
+    handler: { kind: Telo.Value, value: { id: "3", name: Artemis, archived: false } }
+    returns: [{ status: 200, content: { application/json: { schema: !ref Project, body: !cel "result" } } }]
+  - request: { method: PATCH, path: "/projects/{id}" }
+    handler: { kind: Telo.Value, value: { id: "1", name: Apollo, archived: false } }
+    returns: [{ status: 200, content: { application/json: { schema: !ref Project, body: !cel "result" } } }]
+  - request: { method: DELETE, path: "/projects/{id}" }
+    handler: { kind: Telo.Value, value: {} }
+    returns: [{ status: 204 }]
+  - request: { method: POST, path: "/projects/{id}/archive" }
+    handler: { kind: Telo.Value, value: { id: "1", name: Apollo, archived: true } }
+    returns: [{ status: 200, content: { application/json: { schema: !ref Project, body: !cel "result" } } }]
+  - request: { method: POST, path: "/projects/{id}/restore" }
+    handler: { kind: Telo.Value, value: {} }
+    returns: [{ status: 204 }]
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: !cel "ports.http" }
+mounts:
+  - { path: /api, mount: !ref api }
+  - path: /
+    mount:
+      kind: UiReact.App
+      title: Projects
+      theme: !ref UiReact.defaultTheme
+      toaster: { side: top, align: center }
+      pages:
+        - !ref projectPage
+        - kind: Ui.Page
+          path: /projects
+          title: Projects
+          children:
+            - type: composite
+              ref:
+                kind: Ui.Listing
+                presentation: !ref projectsPresentation
+                model: !ref Project
+                filters: { archived: false }
+                create: { to: { kind: Ui.Navigate, href: /projects/new } }
+                edit:
+                  to:
+                    kind: Ui.OpenPage
+                    page: !ref projectPage
+                    pathParams: { id: !cel "row.id" }
+                    surface: { kind: Ui.Drawer }
+                delete:
+                  onSuccess:
+                    - kind: Ui.Toast
+                      text: { text: "{$name} deleted.", values: { name: !cel "row.name" } }
+                  onFailure:
+                    - kind: Ui.Toast
+                      text: { text: "Could not delete {$name}: {$message}", values: { name: !cel "row.name", message: !cel "error.message" } }
+                rowActions:
+                  - mutation: !ref archiveProject
+                    inputs: { id: !cel "row.id" }
+                    label: Archive
+                    onSuccess:
+                      - kind: Ui.Toast
+                        text: { text: "{$name} archived.", values: { name: !cel "result.name" } }
+                        link:
+                          label: View
+                          to: { kind: Ui.OpenPage, page: !ref projectPage, pathParams: { id: !cel "result.id" } }
+                        call:
+                          label: Undo
+                          mutation: !ref restoreProject
+                          inputs: { id: !cel "result.id" }
+                          onSuccess: [{ kind: Ui.Toast, text: Restored. }]
+                    onFailure:
+                      - kind: Ui.Toast
+                        tone: warning
+                        text: { text: "Could not archive the project: {$message}", values: { message: !cel "error.message" } }
+                        call:
+                          label: Retry
+                          mutation: !ref archiveProject
+                          inputs: { id: !cel "input.id" }
+                          # Retry's own result, shadowing the archive's.
+                          onSuccess:
+                            - kind: Ui.Toast
+                              text: { text: "{$name} archived.", values: { name: !cel "result.name" } }
+        - kind: Ui.Page
+          path: /projects/archived
+          title: Archived
+          children:
+            - type: composite
+              ref:
+                kind: Ui.Listing
+                presentation: !ref projectsPresentation
+                model: !ref Project
+                filters: { archived: true }
+                rowActions:
+                  - mutation: !ref restoreProject
+                    inputs: { id: !cel "row.id" }
+                    label: Restore
+                    onSuccess:
+                      - kind: Ui.Toast
+                        text: { text: "{$name} restored.", values: { name: !cel "row.name" } }
+        - kind: Ui.Page
+          path: /projects/new
+          title: New project
+          children:
+            - type: composite
+              ref:
+                kind: Ui.Form
+                model: !ref ProjectName
+                # Declared rather than the default write, so that `result` is the created project.
+                onSubmit:
+                  label: Create
+                  mutation:
+                    kind: Ui.Mutation
+                    inputModel: !ref ProjectName
+                    outputModel: !ref Project
+                    url: /api/projects
+                    invalidates: [/api/projects]
+                  inputs: { name: !cel "values.name" }
+                onSuccess:
+                  - { kind: Ui.Navigate, href: { path: "/projects/{id}", pathParams: { id: !cel "result.id" } } }
+                  - kind: Ui.Toast
+                    tone: info
+                    text: { text: "{$name} created.", values: { name: !cel "result.name" } }
+                onFailure:
+                  - kind: Ui.Toast
+                    text: { text: "Could not create {$name}: {$message}", values: { name: !cel "values.name", message: !cel "error.message" } }

@@ -1,0 +1,54 @@
+kind: Telo.Application
+metadata:
+  name: UiToastRefusalsTest
+  version: 1.0.0
+  description: |
+    What a toast and a close effect refuse where they are written, by `telo
+    check`: a close at a link's destination, a toast call that draws or has no
+    label, a read of `result` in a failure list or of `error` in a success
+    list, a result the form's write does not answer with, lists under a write
+    that has none, an unknown tone, a surface in an effect list, a placeholder
+    nothing fills and inputs that cannot make the call's record.
+imports: { Assert: ../../assert }
+targets:
+  - !ref refused
+---
+kind: Assert.Manifest
+metadata: { name: refused }
+source: ./__fixtures__/invalid/toasts/telo.yaml
+expect:
+  errors:
+    - code: REFERENCE_KIND_MISMATCH
+      message: "Ui.Listing/closeAtLink: reference at 'rowActions[0].onSuccess[0].link.to' → 'Ui.Close' does not implement 'Ui.Destination' (known implementations: Ui.Navigate, Ui.OpenPage)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Listing/callDraws: /rowActions/0/onSuccess/0/call must NOT have additional properties ('result' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Listing/callUnlabelled: /rowActions/0/onSuccess/0/call is missing required property 'label'"
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "Ui.Listing/resultInFailure: !cel: 'result' is not available here — Ui.Listing/resultInFailure withholds it: a failure has no result."
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "Ui.Listing/errorInSuccess: !cel: 'error' is not available here — Ui.Listing/errorInSuccess withholds it: a success has no error."
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "Ui.Form/createFailure: !cel: 'result' is not available here — Ui.Form/createFailure withholds it: a failure has no result."
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Form/renameSuccess: !cel: 'result.nme' is not defined (available: id, name)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Form/listsUnderSubmit: /onSubmit must NOT have additional properties ('onSuccess' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Form/failureUnderRecord: /record must NOT have additional properties ('onFailure' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Form/listsWithoutWrite: / matches a shape that is not allowed here"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Form/listsWithoutWrite: / must match \"then\" schema"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Listing/unknownTone: /rowActions/0/onSuccess/0/tone must be equal to one of the allowed values (info | success | warning | danger)"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "Ui.Listing/surfaceEffect: reference at 'rowActions[0].onSuccess[0]' → 'Ui.Dialog' does not implement 'Ui.Effect' (known implementations: Ui.Toast, Ui.Close, Ui.Navigate, Ui.OpenPage)"
+    - code: MESSAGE_PLACEHOLDER_UNBOUND
+      message: "Ui.Listing/placeholderUnbound: the values for the text at 'text.text' at 'text.values' is refused: no value is given for count, which the message reads."
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "Ui.Listing/undoInputs: inputs at 'rowActions[0].onSuccess[0].call.inputs' do not satisfy restore's declared inputType: / is missing required property 'id'"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "Ui.Listing/undoInputs: inputs at 'rowActions[0].onSuccess[0].call.inputs' do not satisfy restore's declared inputType: / must NOT have additional properties ('slug' is not allowed)"
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "Ui.Listing/deleteResult: !cel: 'result' is not available here — Ui.Listing/deleteResult withholds it: a toast reads only the roots bound where it is written"
