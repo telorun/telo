@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.42.0 - 2026-11-27
+### Added
+* A boot step that calls something can now be added: the Boot + offers Call beside Start, listing every resource and imported ready-made instance a step can invoke, and opens the new step's arguments form.
+### Fixed
+* Add import lists each kind once, shows ready-made instances by their own name, and no longer offers the built-in vocabulary. The new application and library dialog labels its name field and takes any text: a name that is not an identifier is saved under one derived from it (new app becomes NewApp, shown before Create) and kept as metadata.title. Every dialog now has a description.
+* Backspace or Delete with a field of a box selected no longer deletes the whole resource, a failed delete now shows an error instead of the node silently reappearing, and the Boot list offers Call for every resource an invoke step accepts however the module's schema spells it. The new module dialog opens at once from the last known starter catalog and refreshes it in the background, the Add runner dialog has a description, a runner keeps one name — the one stored for it — everywhere, with the name it advertises shown beside its description in Settings, and declining a runner's terms, or switching to another runner, no longer brings that runner's terms back or reads a workspace from a session that is not running.
+* Start from a starter now lists the starters on a first visit, and the landing screen scrolls from its top in a short window.
+* Studio no longer shows a program as running after it has finished: under watch the run chip reads Finished or Failed and its timer stops. The runner terms now wrap to the dialog, the graph's off-canvas drawer is titled and grouped by import alias with kinds written as the module writes them, a lone node is no longer zoomed past its natural size and stays in view when the detail panel opens, boot step selections get readable headers, import search results are titled by module name, the boot add button is titled Add to boot, and a deleted resource leaves the graph at once.
+* The browser-stored workspace now reopens after a page reload instead of offering a folder picker, and a resource can be deleted from the graph (Delete key, the node's delete button or context menu), the detail panel and the Outline.
+
 ## 0.41.0 - 2026-11-24
 ### Fixed
 * Regular expressions that could take polynomial or exponential time on crafted input now run in linear time with the same results.

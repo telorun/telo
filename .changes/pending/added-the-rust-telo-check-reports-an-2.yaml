@@ -1,5 +1,0 @@
-units:
-  cli: Added
-body: "The Rust telo check reports an input's default: that its own declaration refuses
-  (DEFAULT_INVALID, or the value type's own code such as URL_INVALID) and a port's
-  default: null, as the Node one does."

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.14.0 - 2026-11-27
+### Added
+* Requires the telo release that checks format: path-template, as the ui module it is built with does: an older telo no longer selects this version.
+* The Radix theme styles the renamed mutation answer parts (mutation-result, mutation-failure) and the new saving and retry parts of a form autosave; the action, action-result, action-failure, row-answer and row-failure parts it styled before are gone.
+
 ## 0.12.0 - 2026-11-22
 ### Added
 * The theme styles the query part, the renderer's query node, in place of the data part it replaces.

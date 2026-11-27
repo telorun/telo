@@ -1,9 +1,0 @@
-units:
-  analyzer: Added
-body: "An `x-telo-schema-from` slot reads its schema out of the source kind together
-  with the fragments that kind hoisted, so a source field typed `$ref:
-  telo://manifest#/$defs/JsonSchema7` is validated where it is transplanted, a pattern
-  RE2 cannot read there is reported at the pattern as `DEPENDENT_SCHEMA_MISMATCH`, and a
-  derived schema that does not compile is `SCHEMA_COMPILE_ERROR` at the slot, naming its
-  source. Breaking: a slot whose derived schema does not compile was validated by
-  nothing and passed; it is now refused by `telo check` and at load."

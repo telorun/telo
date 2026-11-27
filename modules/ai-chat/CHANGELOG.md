@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.0 - 2026-11-27
+### Added
+* Requires the telo release that checks an HTTP route's request and response schemas before the app runs, as the http-server module it is built with does: an older telo no longer selects this version.
+
 ## 0.5.0 - 2026-11-12
 ### Fixed
 * Each turn now runs under a context minted through the runtime and closed when the turn ends, so an agent whose streamed output comes from a with:-scoped resource keeps that resource alive for the whole turn.

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.32.0 - 2026-11-27
+### Added
+* Requires the telo release that checks an HTTP route's request and response schemas before the app runs, as the http-server module it is built with does: an older telo no longer selects this version.
+* The authoring guidance says a schema's pattern, its patternProperties keys and format: regex are RE2, refused before the app runs wherever a schema is written — an exclusion is written as a positive pattern beside not: — that a field holding JSON Schema $refs telo://manifest#/$defs/JsonSchema7, and that a field holding a path template declares format: path-template.
+* The build-ui guide covers writes declared once as Ui.Mutation and run by calls, Ui.Form's onSubmit, autosave and onSuccess, and queries and listings that follow a form through form.
+* The library design guide says a library input typed `Text` is judged in the importer's language and read by the library as that importer's `TextRecord`.
+### Fixed
+* The get_kinds tool description names Self.MutationCall, not the removed Self.BoundAction, as its example of a named shape.
+
 ## 0.31.0 - 2026-11-24
 ### Added
 * The build_ui guide teaches that a record's screens are pages: a Ui.Form with record { presentation, key? } and initialValues on a create page and on an edit page reading its record in a query node, the listing's create and edit as presses to a Ui.OpenPage, and any Ui.Surface for the opened page.

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.42.0 - 2026-11-27
+### Added
+* Requires the telo release that checks an HTTP route's request and response schemas before the app runs, as the http-server module it is built with does: an older telo no longer selects this version.
+* The agent's primer covers writes declared once as Ui.Mutation and run by calls (Ui.MutationCall, Ui.Move, a form's onSubmit and autosave) with Ui.Prompt, onSuccess effects and invalidates in place of Ui.Action, Ui.BoundAction and refreshes; the three kinds of Ui.Form; queries and listings that follow a form through form; and the widened x-telo-context-ref-from: data segments before the first reference, a list of paths as ordered alternatives, the binding's own keywords where the path holds nothing, and x-telo-context-withheld beside it refusing the binding wherever no path names anything.
+* The agent's primer has every application serving HTTP declare a `Telo.PublicUrl` need for its own address, and build every URL it hands out to itself — links, OAuth redirect URIs, a webhook endpoint printed for the user to register — from that need.
+* The authoring guidance says a schema's pattern, its patternProperties keys and format: regex are RE2, refused before the app runs wherever a schema is written — an exclusion is written as a positive pattern beside not: — that a field holding JSON Schema $refs telo://manifest#/$defs/JsonSchema7, and that a field holding a path template declares format: path-template.
+* The primer says a library input typed `Text` is written by the importer in its own `lang:` and read by the library as the importer's `TextRecord`, forwarded on with `!cel "variables.<name>"`.
+* The primer says a scoped Telo.Import may be written inside a choice, and that its source must resolve in every configuration.
+* The primer says a '...' splice at an import's top level is refused at load, and that a need supplied behind a choice is read from the environment where the option taken leaves it out.
+* The primer says an import's inputs may be chosen with `!if` / `!switch`, while its alias, kind, source and integrity are refused at load behind a tag.
+* The primer teaches the typed CEL reads: declared shapes type every read to full depth, a declared number is a double, union members are read through .? / has() / a test on the discriminating field with .orValue(…) or .value() to unwrap, string() over a nullable is guarded, an import's inputs cannot read resources, and a !ref at a schema slot must name a shape.
+
 ## 0.41.0 - 2026-11-24
 ### Added
 * The agent's primer covers `x-telo-context-partial: true`, which types a binding as some members of the record its typing annotation names, each optional and nullable.

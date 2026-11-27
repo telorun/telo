@@ -1,6 +1,0 @@
-units:
-  analyzer: Fixed
-body: telo check reports `REFERENCE_KIND_MISMATCH` at a reference slot inside a template
-  body's `resources:` entry whose `!ref` names a sibling entry or a resource of the
-  defining module of a kind the slot does not take, where the body is written; it used
-  to be reported only at a consumer of the kind, and not at all with none.

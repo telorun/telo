@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.14.0 - 2026-11-27
+### Added
+* Requires the telo release carrying the widened context reading that ui now uses, since the module imports ui.
+* Requires the telo release that checks format: path-template, as the ui module it is built with does: an older telo no longer selects this version.
+
 ## 0.12.0 - 2026-11-22
 ### Added
 * Each staged source declares the package its files are a release of (`purl` in `sources:`), the identity a software bill of materials lists.

@@ -1,5 +1,0 @@
-units:
-  modules/ui-lucide: Added
-  modules/ui-react-conformance: Added
-body: Requires the telo release carrying the widened context reading that ui now uses,
-  since the module imports ui.

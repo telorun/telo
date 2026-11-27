@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.28.0 - 2026-11-27
+### Added
+* The session supervisor speaks protocol generation 2, which adds GET /v1/port-forward?port=<n>: a WebSocket under the same bearer token (4401 / 4403) relaying raw bytes both ways to 127.0.0.1:<n> inside the container, closed 4400 for a malformed port and 4502 when nothing accepts the connection, independent of the connection driving the supervisor, and reading nothing more from the port while 1 MiB is unsent rather than closing. SupervisorClient.openPortForward and SupervisedApp.openPortForward open one as a byte stream, and FakeSupervisor answers them. AppAddresses.inspect is now { listen, connect(signal) }: core speaks the debug stream's HTTP over the stream a backend's opener returns instead of dialling a URL, keeping its retry until the run ends, and openInspectSocket is the plain-socket opener; a backend that returned { listen, url } must return an opener instead.
+
 ## 0.27.1 - 2026-11-24
 ### Fixed
 * Regular expressions that could take polynomial or exponential time on crafted input now run in linear time with the same results.
