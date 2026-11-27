@@ -14,7 +14,7 @@ metadata:
     Run, then:
         curl -X POST http://localhost:4444/v1/charge
 requires: { telo: ">=0.133.0" }
-imports: { Http: ../../modules/http-server, JavaScript: ../../modules/javascript }
+imports: { Http: oci://ghcr.io/telorun/http-server@0.47.0#sha256-1t54RaeyhLB_eBqp0334LcGWF2TDAdfaV2n_MVQD76A, JavaScript: oci://ghcr.io/telorun/javascript@0.14.2#sha256-DDkoguHieiZwCQOEc3F8fTBv-Ouw5CDC8qM_WKs0ERQ }
 targets:
   - !ref paymentServer
   - { name: openDocs, invoke: !ref openDocs, inputs: { url: !interpolate "http://localhost:${{ ports.http }}/docs/" } }

@@ -7,9 +7,9 @@ metadata:
     from the whole conversation so far, and two conversations must not see each
     other's messages.
 imports:
-  App: ../../../modules/app
-  HttpClient: ../../../modules/http-client
-  Assert: ../../../modules/assert
+  App: oci://ghcr.io/telorun/app@0.7.2#sha256-29SmNhB_A4l2fGjs5eiV0pYRetQ8-ylNBnPHY_iqgOs
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.1#sha256-yODGL4HqbynR4aaPrcN1I2RIsmNBDn3ciL1uobA8nqA
+  Assert: oci://ghcr.io/telorun/assert@0.23.0#sha256-CT1vdPTra9haCPntji5sJG0qG_acnTaeYxg0roNgZGI
 # Resolved against the working directory, so the history path built from it is
 # absolute — which is what the child's host-path variable accepts from a caller.
 variables:

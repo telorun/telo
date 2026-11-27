@@ -15,10 +15,10 @@ metadata:
     the lease this test is for. Nesting also tears each replica down in the
     reverse order it started.
 imports:
-  App: ../../../modules/app
-  Timer: ../../../modules/timer
-  HttpClient: ../../../modules/http-client
-  Assert: ../../../modules/assert
+  App: oci://ghcr.io/telorun/app@0.7.2#sha256-29SmNhB_A4l2fGjs5eiV0pYRetQ8-ylNBnPHY_iqgOs
+  Timer: oci://ghcr.io/telorun/timer@0.10.1#sha256-opDPeuQO4FRSGss3jWJGPUW7b3a81z5V6z-67dQzIP8
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.1#sha256-yODGL4HqbynR4aaPrcN1I2RIsmNBDn3ciL1uobA8nqA
+  Assert: oci://ghcr.io/telorun/assert@0.23.0#sha256-CT1vdPTra9haCPntji5sJG0qG_acnTaeYxg0roNgZGI
 variables:
   # Anchored at the working directory, as the example's own `dbFile` is: a value
   # supplied by name must already be an absolute host path.

@@ -14,7 +14,7 @@ metadata:
     its reservation being over the ceiling. Were any of those calls left out —
     the unusable summary's included — the third would fit.
 imports:
-  Mcp: ../../../../modules/mcp-client
+  Mcp: oci://ghcr.io/telorun/mcp-client@0.18.2#sha256-jTbLVRRIY0HeV3sBFW2lW9TEpXNkjJtAB7KX5MX2EGM
   Chat:
     source: ../
     resources:
@@ -28,9 +28,9 @@ imports:
       budgetLimit: 80
       reservePerTurn: 10
       maxContextTokens: 10
-  App: ../../../../modules/app
-  Stream: ../../../../modules/stream
-  Assert: ../../../../modules/assert
+  App: oci://ghcr.io/telorun/app@0.7.2#sha256-29SmNhB_A4l2fGjs5eiV0pYRetQ8-ylNBnPHY_iqgOs
+  Stream: oci://ghcr.io/telorun/stream@0.15.2#sha256-8c77U8oISAQ0cLxRMttx0_Altgr-TcJl6g2Zq5Dc3bw
+  Assert: oci://ghcr.io/telorun/assert@0.23.0#sha256-CT1vdPTra9haCPntji5sJG0qG_acnTaeYxg0roNgZGI
 variables:
   scratch:
     env: CHAT_TEST_TURN_SPEND_SCRATCH

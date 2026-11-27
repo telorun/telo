@@ -52,13 +52,13 @@ metadata:
     replays provider state. Every request body is kept in order; GET /requests
     returns it with `input` and `instructions` aliases for test assertions.
 imports:
-  Http: ../../../../../../modules/http-server
-  PlainText: ../../../../../../modules/plain-text-codec
-  Stream: ../../../../../../modules/stream
-  Sql: ../../../../../../modules/sql
-  SQLite: ../../../../../../modules/sqlite
-  Timer: ../../../../../../modules/timer
-  Run: ../../../../../../modules/run
+  Http: oci://ghcr.io/telorun/http-server@0.47.0#sha256-1t54RaeyhLB_eBqp0334LcGWF2TDAdfaV2n_MVQD76A
+  PlainText: oci://ghcr.io/telorun/plain-text-codec@0.11.2#sha256-pyfbCDOILWCgCUznQGl6KY9XnmEdh9K8G1UcbrJWKJM
+  Stream: oci://ghcr.io/telorun/stream@0.15.2#sha256-8c77U8oISAQ0cLxRMttx0_Altgr-TcJl6g2Zq5Dc3bw
+  Sql: oci://ghcr.io/telorun/sql@0.31.5#sha256-RQrmaix7-he4wzjCTZbaqeULSf7LQFcWwJaRadTIdYU
+  SQLite: oci://ghcr.io/telorun/sqlite@0.16.0#sha256-5VSa5D5dIm88NoMDGqqytSk7mk_GsdfBSxejnNTuYHI
+  Timer: oci://ghcr.io/telorun/timer@0.10.1#sha256-opDPeuQO4FRSGss3jWJGPUW7b3a81z5V6z-67dQzIP8
+  Run: oci://ghcr.io/telorun/run@0.35.1#sha256-m6oA-tLMj4v0JvzkvRt17CBuWzXSYpumtxyNRb3qVz8
 ports:
   http:
     env: PORT

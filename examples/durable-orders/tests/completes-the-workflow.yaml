@@ -8,7 +8,7 @@ metadata:
     run — so what is asserted here is that a run completes, whether it is starting
     fresh or replaying a journal an earlier run left behind.
 imports:
-  Assert: ../../../modules/assert
+  Assert: oci://ghcr.io/telorun/assert@0.23.0#sha256-CT1vdPTra9haCPntji5sJG0qG_acnTaeYxg0roNgZGI
 targets:
   - !ref test
 ---

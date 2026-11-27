@@ -27,12 +27,12 @@ requires:
   # 0.133.0: `Telo.OpenUrl`.
   telo: ">=0.133.0"
 imports:
-  Http: ../../modules/http-server
-  Mcp: ../../modules/mcp-server
-  Sql: ../../modules/sql
-  SQLite: ../../modules/sqlite
-  Ui: ../../modules/ui
-  UiReact: ../../modules/ui-react
+  Http: oci://ghcr.io/telorun/http-server@0.47.0#sha256-1t54RaeyhLB_eBqp0334LcGWF2TDAdfaV2n_MVQD76A
+  Mcp: oci://ghcr.io/telorun/mcp-server@0.25.0#sha256-j7L6k18b1Rhed6wIS6ZknJw3Da7WuMwLJSC_SoTxM6E
+  Sql: oci://ghcr.io/telorun/sql@0.31.5#sha256-RQrmaix7-he4wzjCTZbaqeULSf7LQFcWwJaRadTIdYU
+  SQLite: oci://ghcr.io/telorun/sqlite@0.16.0#sha256-5VSa5D5dIm88NoMDGqqytSk7mk_GsdfBSxejnNTuYHI
+  Ui: oci://ghcr.io/telorun/ui@0.17.0#sha256-a9tI43j9X9N6cb2sV_Esfcfd5sXT-KHR1hgfTFUD3Yk
+  UiReact: oci://ghcr.io/telorun/ui-react@0.18.0#sha256-CrvrI-YgOC77LbResR23qWaKPUnC5qtkQ5PrPJzBosQ
 targets:
   - !ref migrate
   - !ref server

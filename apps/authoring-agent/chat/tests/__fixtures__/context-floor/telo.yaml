@@ -7,9 +7,9 @@ metadata:
     health route; the agent's declared floor refuses the value before anything
     starts.
 imports:
-  App: ../../../../../../modules/app
-  HttpClient: ../../../../../../modules/http-client
-  Run: ../../../../../../modules/run
+  App: oci://ghcr.io/telorun/app@0.7.2#sha256-29SmNhB_A4l2fGjs5eiV0pYRetQ8-ylNBnPHY_iqgOs
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.1#sha256-yODGL4HqbynR4aaPrcN1I2RIsmNBDn3ciL1uobA8nqA
+  Run: oci://ghcr.io/telorun/run@0.35.1#sha256-m6oA-tLMj4v0JvzkvRt17CBuWzXSYpumtxyNRb3qVz8
 variables:
   scratch:
     env: CHAT_TEST_CONTEXT_FLOOR_SCRATCH

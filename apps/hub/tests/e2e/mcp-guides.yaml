@@ -11,8 +11,8 @@ metadata:
     characters, past which a client may cut them. Spoken as raw JSON-RPC, so
     the server's own answer is what is asserted.
 imports:
-  HttpClient: ../../../../modules/http-client
-  Assert: ../../../../modules/assert
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.1#sha256-yODGL4HqbynR4aaPrcN1I2RIsmNBDn3ciL1uobA8nqA
+  Assert: oci://ghcr.io/telorun/assert@0.23.0#sha256-CT1vdPTra9haCPntji5sJG0qG_acnTaeYxg0roNgZGI
 targets:
   - !ref initialize_InstructionsNameTheGuidesWithinTheBound
   - !ref toolsList_OffersTheThreeGuides

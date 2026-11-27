@@ -12,7 +12,7 @@ metadata:
         curl 'http://localhost:8845/v1/hello?name=World'
         curl 'http://localhost:8845/v2/hello?name=World'
 requires: { telo: ">=0.133.0" }
-imports: { Http: ../../modules/http-server, Templated: ./library.yaml }
+imports: { Http: oci://ghcr.io/telorun/http-server@0.47.0#sha256-1t54RaeyhLB_eBqp0334LcGWF2TDAdfaV2n_MVQD76A, Templated: ./library.yaml }
 ports: { http: { env: PORT, protocol: tcp, default: 8845 } }
 targets:
   - !ref templatedApiServer

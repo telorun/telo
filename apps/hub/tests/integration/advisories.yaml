@@ -28,20 +28,20 @@ metadata:
     own stack through DB_HOST, DB_PORT, DB_USER, DB_PASSWORD and DB_NAME, never a
     developer's database. Run only by the hub's own suite through that command.
 imports:
-  Run: ../../../../modules/run
-  Http: ../../../../modules/http-server
-  Sql: ../../../../modules/sql
-  Postgres: ../../../../modules/postgres
+  Run: oci://ghcr.io/telorun/run@0.35.1#sha256-m6oA-tLMj4v0JvzkvRt17CBuWzXSYpumtxyNRb3qVz8
+  Http: oci://ghcr.io/telorun/http-server@0.47.0#sha256-1t54RaeyhLB_eBqp0334LcGWF2TDAdfaV2n_MVQD76A
+  Sql: oci://ghcr.io/telorun/sql@0.31.5#sha256-RQrmaix7-he4wzjCTZbaqeULSf7LQFcWwJaRadTIdYU
+  Postgres: oci://ghcr.io/telorun/postgres@0.13.1#sha256-PzxNAfiijDmS7LfgFqRdaA0PHwLUrJ6Gw0K6Ftot3Vo
   S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
-  Shell: ../../../../modules/shell
-  Embedding: ../../../../modules/embedding
-  OpenAI: ../../../../modules/openai
-  HttpClient: ../../../../modules/http-client
-  VectorStore: ../../../../modules/vector-store
-  VectorStoreMemory: ../../../../modules/vector-store-memory
-  Timer: ../../../../modules/timer
-  Osv: ../../../../modules/osv
-  Assert: ../../../../modules/assert
+  Shell: oci://ghcr.io/telorun/shell@0.13.3#sha256-AXRHgGrsKfJpClRdRpdA5KDPtgrBohQeJ1JJmKuJ_xg
+  Embedding: oci://ghcr.io/telorun/embedding@0.12.3#sha256-R068vUQDFYEY3XIQg_SRErb_1MiNGyJ8_WxFjSuucjY
+  OpenAI: oci://ghcr.io/telorun/openai@0.24.2#sha256-HmJF1z2Du3y_EXNsPV_Oj038KOqWeD_efRSEltqWqCI
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.1#sha256-yODGL4HqbynR4aaPrcN1I2RIsmNBDn3ciL1uobA8nqA
+  VectorStore: oci://ghcr.io/telorun/vector-store@0.11.3#sha256-Vt3niMkJuyob3F8_CBO11i9QVA80zVT9AdxmxcdxUJs
+  VectorStoreMemory: oci://ghcr.io/telorun/vector-store-memory@0.9.4#sha256-kVNJD-hqrMJJF-hbRmU6Y5gnxl2QlS5KJShoVl-z4Ls
+  Timer: oci://ghcr.io/telorun/timer@0.10.1#sha256-opDPeuQO4FRSGss3jWJGPUW7b3a81z5V6z-67dQzIP8
+  Osv: oci://ghcr.io/telorun/osv@0.2.0#sha256-44HGQBg9xA_vN0OUvSa1QB3HzNT7tIq9_MwA7aGZDnE
+  Assert: oci://ghcr.io/telorun/assert@0.23.0#sha256-CT1vdPTra9haCPntji5sJG0qG_acnTaeYxg0roNgZGI
   Schema:
     source: ../../hub-schema.yaml
     resources:

@@ -17,7 +17,7 @@ metadata:
 requires:
   # A host-path variable declaring `entry:` needs 0.121.0.
   telo: ">=0.121.0"
-imports: { Http: ../modules/http-server }
+imports: { Http: oci://ghcr.io/telorun/http-server@0.47.0#sha256-1t54RaeyhLB_eBqp0334LcGWF2TDAdfaV2n_MVQD76A }
 targets:
   - !ref server
 ports:
