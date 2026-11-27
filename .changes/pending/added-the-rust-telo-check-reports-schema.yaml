@@ -1,9 +1,0 @@
-units:
-  analyzer: Added
-body: The Rust `telo check` reports `SCHEMA_IN_PLACE_CYCLE` for a `variables:` /
-  `secrets:` entry, or a `Telo.Definition` / `Telo.Abstract` schema, whose own
-  references come back to the node they left without descending into the value — the
-  entry's own where written, an imported library's at the `imports:` entry reaching it —
-  and validates nothing against it, so the Rust kernel refuses the load as the Node
-  kernel does. Before, it reported `SCHEMA_NESTING_EXCEEDED` at each value validated
-  against such a schema.

@@ -1,4 +1,0 @@
-units:
-  sdk: Added
-body: "The built-in `Telo.Library` and `Telo.Application` entries declare each
-  `variables:` / `secrets:` entry as a JSON Schema position (`$ref: JsonSchema7`)."

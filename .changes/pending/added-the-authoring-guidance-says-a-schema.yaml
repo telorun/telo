@@ -1,8 +1,0 @@
-units:
-  apps/authoring-agent: Added
-  apps/hub: Added
-body: "The authoring guidance says a schema's pattern, its patternProperties keys and
-  format: regex are RE2, refused before the app runs wherever a schema is written — an
-  exclusion is written as a positive pattern beside not: — that a field holding JSON
-  Schema $refs telo://manifest#/$defs/JsonSchema7, and that a field holding a path
-  template declares format: path-template."

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.0 - 2026-11-27
+### Added
+* Requires the telo release that checks an HTTP route's request and response schemas before the app runs, as the http-server module it is built with does: an older telo no longer selects this version.
+
 ## 0.9.0 - 2026-11-19
 ### Added
 * Requires the telo release that applies library migrations, since the SQL module it imports now declares the `beforeMigrations:` → `prepare:` rename as a migration of its own.

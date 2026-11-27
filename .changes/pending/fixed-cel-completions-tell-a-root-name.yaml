@@ -1,5 +1,0 @@
-units:
-  packages/ide-support: Fixed
-body: CEL completions tell a root name that names a type from the type the environment
-  declares for it, not from its printed text, so a long type shown shortened in the
-  editor no longer changes which completions are offered.

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.0 - 2026-11-27
+### Added
+* CrudUi.Admin tests and docs follow the mutation vocabulary of ui: a board move names a Ui.Mutation the application declares, and an admin whose create page is a record form can go to the new record with an onSuccess effect over result.id, since the collection now answers a POST with the stored record.
+* Requires the telo release that checks format: path-template, as the ui module it is built with does: an older telo no longer selects this version.
+
 ## 0.10.0 - 2026-11-24
 ### Added
 * CrudUi.Admin no longer generates forms: its create and edit are Ui.Press values forwarded whole to the listing, so each points at a page the application declares (a Ui.OpenPage to a page holding a Ui.Form with record), and the previous { surface, afterSubmit, unsaved } objects are refused. An omitted create draws no create button. There is no migration, since a composite cannot add routes: write the create and edit pages and press them from the admin.

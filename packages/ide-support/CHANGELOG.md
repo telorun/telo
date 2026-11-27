@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.141.0 - 2026-11-27
+### Fixed
+* CEL completions tell a root name that names a type from the type the environment declares for it, not from its printed text, so a long type shown shortened in the editor no longer changes which completions are offered.
+
 ## 0.140.0 - 2026-11-24
 ### Fixed
 * Regular expressions that could take polynomial or exponential time on crafted input now run in linear time with the same results.

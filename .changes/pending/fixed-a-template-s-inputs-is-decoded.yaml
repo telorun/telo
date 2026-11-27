@@ -1,6 +1,0 @@
-units:
-  kernel: Fixed
-body: A template's `inputs:` is decoded at creation against an input contract the
-  dispatched entry's kind derives from the entry, so a plain-encoded literal there (an
-  RFC 3339 instant at a `Telo.Timestamp` slot) reaches the entry as the value it encodes
-  instead of being refused at the call.

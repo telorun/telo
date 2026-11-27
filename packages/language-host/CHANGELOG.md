@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.0 - 2026-11-27
+### Added
+* Exports the editor protocol generations the router speaks as ROUTER_SPEAKS, so a host reading the engine catalog asks for the same ones.
+
 ## 0.5.0 - 2026-11-19
 ### Added
 * Released under the MIT license instead of the Sustainable Use License: the published artifact declares MIT and carries the MIT license text. Earlier releases keep the license they were published under.

@@ -1,5 +1,0 @@
-units:
-  kernel: Fixed
-body: A refusal message describing the value it refused writes an instant in RFC 3339, a
-  duration as "5400s" and bytes as base64url — each instance value in its plain encoding
-  — where it used to write their internal representation.

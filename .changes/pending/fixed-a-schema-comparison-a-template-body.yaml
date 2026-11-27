@@ -1,7 +1,0 @@
-units:
-  analyzer: Fixed
-body: "A schema comparison (a template body's forwarded field,
-  `TEMPLATE_FORWARD_INCOMPATIBLE`; a contract replacing its abstract's,
-  `CONTRACT_NOT_SUBSTITUTABLE`; a value forwarded to a slot) reads a node that declares
-  no `type` by the types of its `const` / `enum` values, so `{ type: integer }` against
-  `{ enum: [a, b] }` is a definite mismatch where it passed."

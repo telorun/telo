@@ -1,6 +1,0 @@
-units:
-  cli: Added
-body: "A cold start now says what it is waiting for: telo run reports each module fetch
-  and the debug UI download on stderr as it starts and again with its duration, and
-  controller downloads and bundling do the same when output is piped, so a first run in
-  an empty cache no longer looks hung. A warm start prints nothing new."

@@ -1,6 +1,0 @@
-units:
-  cli: Fixed
-body: A published kernel image (telorun/node) now reports exactly its release version
-  from telo --version, as the npm package does, instead of <version>+unreleased, so
-  Studio no longer warns about a version mismatch on every Docker-runner run; a locally
-  built image still reports +unreleased.

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.141.0 - 2026-11-27
+### Added
+* A cold start now says what it is waiting for: telo run reports each module fetch and the debug UI download on stderr as it starts and again with its duration, and controller downloads and bundling do the same when output is piped, so a first run in an empty cache no longer looks hung. A warm start prints nothing new.
+* telo needs report lists a need an option of an import's needs: leaves to the environment, required when that option is taken.
+* The Rust telo check reports an input's default: that its own declaration refuses (DEFAULT_INVALID, or the value type's own code such as URL_INVALID) and a port's default: null, as the Node one does.
+### Fixed
+* A packaged telo keeps its validator cache: compiled validators are now keyed by the RE2 engine's version as well, and the standalone build bakes every package a kernel cache key reads, from the kernel's own list, refusing to finish when one cannot be resolved.
+* A published kernel image (telorun/node) now reports exactly its release version from telo --version, as the npm package does, instead of <version>+unreleased, so Studio no longer warns about a version mismatch on every Docker-runner run; a locally built image still reports +unreleased.
+* The fetch progress line no longer prints credentials, query or fragment of the address it reads.
+
 ## 0.140.0 - 2026-11-24
 ### Added
 * The Rust telo check reports a module's requires: and restrictions: findings as the Node one does, and telo --version, telo builtins and its dependency verdict keys read the built-in vocabulary archive the Rust analyzer embeds.

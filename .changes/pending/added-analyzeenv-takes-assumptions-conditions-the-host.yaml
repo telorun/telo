@@ -1,6 +1,0 @@
-units:
-  templating: Added
-body: "`AnalyzeEnv` takes `assumptions`: conditions the host knows held or failed on the
-  way to the site, outermost first, handed to the checker so what each proves narrows
-  the expression's reads, and the type checks of its chains, as a guard written inside
-  it would."
