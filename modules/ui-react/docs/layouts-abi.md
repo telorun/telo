@@ -213,7 +213,7 @@ refused as `ERR_UI_COMPONENT_ABI_UNSUPPORTED` or
 is drawn as the error node in its place. This renderer hosts
 `ui_react_layouts-2` alone: a component built for `ui_react_layouts-1` is
 refused, the message naming `ui_react_layouts-2`, and is rebuilt against it. The component ABI `ui_react-1` and the controls
-contract `ui_react_controls-4` are separate generations, unchanged by this one.
+contract `ui_react_controls-5` are separate generations, unchanged by this one.
 
 ## The declaration
 

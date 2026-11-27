@@ -1,0 +1,5 @@
+units:
+  modules/ui-react-radix: Added
+body: "Its controls set and theme implement Toaster, drawn on the DOM beside the Radix
+  layer stack, and move to ui_react_controls-5. Breaking: a controls set written against
+  ui_react_controls-4 is refused, since that generation is no longer hosted."

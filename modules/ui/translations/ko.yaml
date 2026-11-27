@@ -35,6 +35,7 @@ messages:
   siteNavigation: 사이트
   collapseNavigation: 내비게이션 접기
   expandNavigation: 내비게이션 펼치기
+  toaster: 알림
   search: "{$label} 검색"
   remove: "{$label} 제거"
   clear: "{$label} 지우기"

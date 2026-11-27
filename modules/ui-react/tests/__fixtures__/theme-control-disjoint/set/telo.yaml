@@ -6,20 +6,18 @@ metadata:
   description: >-
     Test fixture: a library exporting one control set implementing the switch
     control.
-imports:
-  UiReact: ../../../../
+imports: { UiReact: ../../../../ }
 exports:
   resources: [switches]
   browser:
     - specifier: "@fixture/switches"
       path: ./browser/switch.js
       source: ./switch.js
-      abi: ui_react_controls-4
+      abi: ui_react_controls-5
       external: [react, react/jsx-runtime, react-dom]
       exports: [Switch]
 ---
 kind: UiReact.Controls
-metadata:
-  name: switches
+metadata: { name: switches }
 entry: "@fixture/switches"
 implements: [Switch]

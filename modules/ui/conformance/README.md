@@ -2,7 +2,7 @@
 
 Data files a renderer's tests read, so every renderer answers what `ui`
 answers. Each is one JSON object, `{ description, rows }`, every row carrying a
-`name` and the case's inputs and expected outcome. All ten ship with the
+`name` and the case's inputs and expected outcome. All eleven ship with the
 module through `files:`.
 
 | File | Pins |
@@ -17,6 +17,7 @@ module through `files:`.
 | `template-bindings.json` | the body a query's `input.body` template resolves to from the roots it reads |
 | `merge-patch.json` | the merge patch an edit form sends, and the `If-Match` a write carries |
 | `form-writes.json` | when entered values settle, what a form's `form` root holds, and when its `autosave` sends |
+| `toasts.json` | how long a toast stays, how many show at once, which toasts are one, and what a toast's call does when pressed, dismissed or dropped while pending |
 
 ## `listing-reads.json`
 
@@ -231,3 +232,32 @@ checked where given. The rules the rows pin:
 
 A renderer applies the rows with its own timers; the requests a write makes are
 the mutation contract's, exercised by the renderer's own tests.
+
+## `toasts.json`
+
+One row is one board of toasts, a sequence of `steps`; each step says what
+happened and carries `shown`, the texts of the toasts shown right after it, oldest
+first, and `busy` where it matters, the texts whose call is pending. A toast is
+written `{ tone, text, link?, call? }`, `link` as `{ label, to }` and `call` as
+`{ label, mutation, inputs, onSuccess?, onFailure? }`, the two lists holding the
+toasts the call posts. A step is one of:
+
+| Step | Happens |
+| --- | --- |
+| `post` | a toast is posted |
+| `elapse` | milliseconds pass |
+| `pause` | the toaster reports a pause (`true` while the pointer is over it or the focus is inside) or ends it |
+| `hidden` | the document becomes hidden, or visible again |
+| `dismiss` | the first toast with this text is dismissed |
+| `press` | the call of the toast with this text is pressed and left pending |
+| `answer` | the oldest pending call is answered, `success` or `failure`, and posts its list |
+
+The rules the rows pin: an `info` or `success` toast with no `link` and no `call`
+leaves after 6000 ms, its timer standing still while a pause is reported or the
+document is hidden, and every other toast stays until dismissed. At most three
+are shown: a fourth drops the oldest toast that leaves on its own, else the
+oldest. A toast equal to one shown (tone, text, link destination, and a call's
+mutation and inputs) is not added, and restarts the timer of the one shown. A
+call pending takes no second press; its success withdraws the toast, its
+failure leaves the toast pressable again, and a toast dismissed or dropped while
+its call is pending changes nothing about the call: its list is still posted.

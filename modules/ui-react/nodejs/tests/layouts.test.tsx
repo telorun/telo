@@ -63,7 +63,7 @@ async function drag(r: Rendered, from: Element, onto: Element) {
 
 describe("a list layout", () => {
   it("draws a record's content and its actions as siblings of one row", async () => {
-    rendered = await show([listOf({ delete: true, rowActionsDisplay: "inline" })]);
+    rendered = await show([listOf({ delete: { onSuccess: [], onFailure: [] }, rowActionsDisplay: "inline" })]);
     expect([...rendered.parts("list-item")[0].children].map((child) => child.getAttribute("data-telo-part"))).toEqual(["value", "row-actions"]);
   });
 

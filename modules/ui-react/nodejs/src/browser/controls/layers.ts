@@ -14,6 +14,11 @@ import { useEffect, useRef } from "react";
  * Among the layers drawn here, only the top one answers Escape; a press or the
  * focus outside reaches each layer it is outside of from the top down, as far
  * as the first that stops it.
+ *
+ * The toaster is drawn as a layer but is never a member of the stack: no key,
+ * press or focus inside it reaches a layer, a modal layer makes it neither
+ * inert nor unreachable, and a modal layer's trap lets the focus into it only
+ * while a visit F8 started lasts.
  */
 export const LAYER = "data-telo-layer";
 
@@ -52,6 +57,25 @@ interface Layer {
 
 const stack: Layer[] = [];
 
+/** The toaster drawn on the page, and whether F8 has admitted the focus into it. */
+let toaster: { root: Element; admitted: boolean } | null = null;
+
+/** Hold the toaster's root outside the stack while it is drawn; what is returned lets it go. */
+export function holdToaster(root: Element): () => void {
+  const held = { root, admitted: false };
+  toaster = held;
+  return () => {
+    if (toaster === held) toaster = null;
+  };
+}
+
+/** Admit the focus into the toaster under a modal layer, or end the visit F8 started. */
+export function admitToaster(admitted: boolean): void {
+  if (toaster) toaster.admitted = admitted;
+}
+
+const inToaster = (target: Element | null): boolean => !!toaster && !!target && toaster.root.contains(target);
+
 const TABBABLE = "button, [href], input, select, textarea, [tabindex]";
 
 /** The elements inside `container` the Tab key reaches, in order. */
@@ -81,7 +105,7 @@ function onKeyDown(event: KeyboardEvent) {
   const top = stack.at(-1);
   if (!top) return;
   const target = elementOf(event.target);
-  if (inLaterLayer(top, target)) return;
+  if (inToaster(target) || inLaterLayer(top, target)) return;
   if (event.key === "Escape") top.options.current.onEscape();
   else if (event.key === "Tab" && top.options.current.modal && !event.defaultPrevented) keepTabInside(top, event);
 }
@@ -120,18 +144,29 @@ function outsideOf(target: Element | null, cause: "press" | "focus"): Layer[] {
 }
 
 function onPointerDown(event: Event) {
+  if (inToaster(elementOf(event.target))) return;
   for (const layer of outsideOf(elementOf(event.target), "press")) layer.options.current.onOutside?.("press");
 }
 
 function onFocusIn(event: FocusEvent) {
-  for (const layer of outsideOf(elementOf(event.target), "focus")) {
+  const target = elementOf(event.target);
+  const toToaster = inToaster(target);
+  if (toToaster && toaster?.admitted) return;
+  for (const layer of toToaster ? [...stack].reverse() : outsideOf(target, "focus")) {
     if (!layer.options.current.modal) {
+      // The focus in the toaster closes no layer.
+      if (toToaster) continue;
       layer.options.current.onOutside?.("focus");
       continue;
     }
     // A modal layer keeps the focus inside it.
     const container = present(layer.options.current.inside())[0] as HTMLElement | undefined;
-    if (container) (tabbables(container)[0] ?? container).focus();
+    if (!container) continue;
+    // A press in the toaster leaves the focus where it was inside the layer.
+    const left = elementOf(event.relatedTarget) as HTMLElement | null;
+    if (toToaster && left && container.contains(left)) left.focus();
+    else (tabbables(container)[0] ?? container).focus();
+    if (toToaster) return;
   }
 }
 
@@ -173,7 +208,7 @@ function openLayer(options: { current: LayerOptions }): Layer {
   };
   if (options.current.modal) {
     for (const child of document.body.children) {
-      if (own.includes(child) || child.hasAttribute("inert")) continue;
+      if (own.includes(child) || child.hasAttribute("inert") || child === toaster?.root) continue;
       child.setAttribute("inert", "");
       layer.madeInert.push(child);
     }

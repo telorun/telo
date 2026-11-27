@@ -30,8 +30,8 @@ expect:
       message: "Ui.Page/homePage: /children/8/ref/onSuccess must be array"
     - code: PATH_PARAMETER_UNBOUND
       message: "Ui.Page/homePage: the template 'path: /authors/{id}' of 'authorPage' (named at 'page') reads '{id}', which 'pathParams' does not bind. Add 'id' to 'pathParams'."
-    - code: UNDEFINED_KIND
-      message: "No Telo.Definition found for kind 'Ui.Close': module 'Ui' declares no kind 'Close'."
+    - code: REFERENCE_KIND_MISMATCH
+      message: "Ui.Page/homePage: reference at 'children[5].to' → 'Ui.Close' does not implement 'Ui.Destination' (known implementations: Ui.Navigate, Ui.OpenPage)"
     - code: CEL_UNKNOWN_IDENTIFIER
       message: "Ui.Page/homePage: !cel: 'row' is not available here — Ui.Page/homePage withholds it: a destination reads only the roots bound where it is written"
     - code: REFERENCE_KIND_MISMATCH

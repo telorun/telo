@@ -16,8 +16,8 @@ metadata:
     whose `controls` entries implement one control is refused where it is
     declared and by the theme itself — two different sets, two equal
     declarations through two imports, and one shared set through two aliases
-    alike — and so is a control set replacing some of the ten layer controls
-    but not all of them, as the nine of the third generation are, and a set
+    alike — and so is a control set replacing some of the eleven layer controls
+    but not all of them, as the ten of the fourth generation are, and a set
     written against the previous controls generation. A
     page reference reachable from the application — in a navbar, a link, a
     navigation column in the aside, another module's pane or a library's
@@ -221,14 +221,14 @@ source: ./__fixtures__/invalid/controls-layers-partial/lib/telo.yaml
 expect:
   errors:
     - code: RESOURCE_RULE_VIOLATED
-      message: "UiReact.Controls/nineLayers: implements some of the layer controls but not all of them"
+      message: "UiReact.Controls/tenLayers: implements some of the layer controls but not all of them"
 ---
 kind: Assert.Manifest
 metadata: { name: controlsLayersPartialAtRuntime }
 source: ./__fixtures__/invalid/controls-layers-partial/telo.yaml
 expect:
-  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "UiReact.Controls/nineLayers: implements some of the layer controls but not all of them. A set implementing any of Select, MultiSelect, Combobox, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip and Navigation implements all ten." }]
-  runFails: "UiReact.Controls 'nineLayers': implements the layer controls Select, MultiSelect, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Navigation but not Combobox"
+  errors: [{ code: RESOURCE_RULE_VIOLATED, message: "UiReact.Controls/tenLayers: implements some of the layer controls but not all of them. A set implementing any of Select, MultiSelect, Combobox, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Toaster and Navigation implements all eleven." }]
+  runFails: "UiReact.Controls 'tenLayers': implements the layer controls Select, MultiSelect, Combobox, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Navigation but not Toaster"
 ---
 # A set written against the previous generation is refused, not drawn.
 kind: Assert.Manifest
@@ -237,7 +237,7 @@ source: ./__fixtures__/invalid/controls-previous-generation/lib/telo.yaml
 expect:
   errors:
     - code: BROWSER_ENTRY_ABI_UNSUPPORTED
-      message: "UiReact.Controls/previousControls: 'entry: @fixture/previous-controls' names a browser entry written against 'ui_react_controls-3', and this field accepts 'ui_react_controls-4'"
+      message: "UiReact.Controls/previousControls: 'entry: @fixture/previous-controls' names a browser entry written against 'ui_react_controls-4', and this field accepts 'ui_react_controls-5'"
 ---
 kind: Assert.Manifest
 metadata: { name: controlsPreviousGenerationImported }
@@ -245,7 +245,7 @@ source: ./__fixtures__/invalid/controls-previous-generation/telo.yaml
 expect:
   errors:
     - code: BROWSER_ENTRY_ABI_UNSUPPORTED
-      message: "UiReact.Controls/previousControls: 'entry: @fixture/previous-controls' names a browser entry written against 'ui_react_controls-3', and this field accepts 'ui_react_controls-4'"
+      message: "UiReact.Controls/previousControls: 'entry: @fixture/previous-controls' names a browser entry written against 'ui_react_controls-4', and this field accepts 'ui_react_controls-5'"
 ---
 # Two entries implementing different controls are one theme: nothing refuses it.
 kind: Assert.Manifest

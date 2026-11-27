@@ -1,0 +1,193 @@
+{
+  "description": "How a toaster's board of toasts behaves, whatever draws it: the fixed lifetime of a toast with nothing to operate and its pauses, the limit of three shown, the deduplication of equal toasts, and what a toast's call does when pressed, dismissed or dropped while pending. Each row is a sequence of steps, and each step names what happened and the toasts shown right after it.",
+  "rows": [
+    {
+      "name": "an info toast with nothing to operate leaves after six seconds",
+      "steps": [
+        {"post": {"tone": "info", "text": "Saved."}, "shown": ["Saved."]},
+        {"elapse": 5999, "shown": ["Saved."]},
+        {"elapse": 1, "shown": []}
+      ]
+    },
+    {
+      "name": "a success toast leaves after six seconds",
+      "steps": [
+        {"post": {"tone": "success", "text": "Saved."}, "shown": ["Saved."]},
+        {"elapse": 6000, "shown": []}
+      ]
+    },
+    {
+      "name": "a warning and a danger toast stay until dismissed",
+      "steps": [
+        {"post": {"tone": "warning", "text": "Careful."}, "shown": ["Careful."]},
+        {"post": {"tone": "danger", "text": "Failed."}, "shown": ["Careful.", "Failed."]},
+        {"elapse": 600000, "shown": ["Careful.", "Failed."]},
+        {"dismiss": "Careful.", "shown": ["Failed."]}
+      ]
+    },
+    {
+      "name": "a toast with a link or a call stays, whatever its tone",
+      "steps": [
+        {"post": {"tone": "success", "text": "Archived.", "link": {"label": "View", "to": "/projects/1"}}, "shown": ["Archived."]},
+        {"post": {"tone": "info", "text": "Moved.", "call": {"label": "Undo", "mutation": "restore", "inputs": {"id": "1"}}}, "shown": ["Archived.", "Moved."]},
+        {"elapse": 600000, "shown": ["Archived.", "Moved."]}
+      ]
+    },
+    {
+      "name": "a pause stops the timer and resuming runs the rest of it",
+      "steps": [
+        {"post": {"tone": "info", "text": "Saved."}, "shown": ["Saved."]},
+        {"elapse": 4000, "shown": ["Saved."]},
+        {"pause": true, "shown": ["Saved."]},
+        {"elapse": 600000, "shown": ["Saved."]},
+        {"pause": false, "shown": ["Saved."]},
+        {"elapse": 1999, "shown": ["Saved."]},
+        {"elapse": 1, "shown": []}
+      ]
+    },
+    {
+      "name": "a hidden document stops the timer as a pause does",
+      "steps": [
+        {"post": {"tone": "info", "text": "Saved."}, "shown": ["Saved."]},
+        {"hidden": true, "shown": ["Saved."]},
+        {"elapse": 600000, "shown": ["Saved."]},
+        {"hidden": false, "shown": ["Saved."]},
+        {"elapse": 6000, "shown": []}
+      ]
+    },
+    {
+      "name": "a toast posted during a pause waits for it",
+      "steps": [
+        {"pause": true, "shown": []},
+        {"post": {"tone": "info", "text": "Saved."}, "shown": ["Saved."]},
+        {"elapse": 600000, "shown": ["Saved."]},
+        {"pause": false, "shown": ["Saved."]},
+        {"elapse": 6000, "shown": []}
+      ]
+    },
+    {
+      "name": "a fourth toast drops the oldest",
+      "steps": [
+        {"post": {"tone": "warning", "text": "One"}, "shown": ["One"]},
+        {"post": {"tone": "warning", "text": "Two"}, "shown": ["One", "Two"]},
+        {"post": {"tone": "warning", "text": "Three"}, "shown": ["One", "Two", "Three"]},
+        {"post": {"tone": "warning", "text": "Four"}, "shown": ["Two", "Three", "Four"]}
+      ]
+    },
+    {
+      "name": "a fourth toast drops the oldest timed one before an older one that stays",
+      "steps": [
+        {"post": {"tone": "warning", "text": "Sticky"}, "shown": ["Sticky"]},
+        {"post": {"tone": "info", "text": "First"}, "shown": ["Sticky", "First"]},
+        {"post": {"tone": "info", "text": "Second"}, "shown": ["Sticky", "First", "Second"]},
+        {"post": {"tone": "warning", "text": "Third"}, "shown": ["Sticky", "Second", "Third"]}
+      ]
+    },
+    {
+      "name": "five posts show the last three",
+      "steps": [
+        {"post": {"tone": "warning", "text": "One"}, "shown": ["One"]},
+        {"post": {"tone": "warning", "text": "Two"}, "shown": ["One", "Two"]},
+        {"post": {"tone": "warning", "text": "Three"}, "shown": ["One", "Two", "Three"]},
+        {"post": {"tone": "warning", "text": "Four"}, "shown": ["Two", "Three", "Four"]},
+        {"post": {"tone": "warning", "text": "Five"}, "shown": ["Three", "Four", "Five"]}
+      ]
+    },
+    {
+      "name": "an equal toast is not added again",
+      "steps": [
+        {"post": {"tone": "danger", "text": "Could not archive."}, "shown": ["Could not archive."]},
+        {"post": {"tone": "danger", "text": "Could not archive."}, "shown": ["Could not archive."]}
+      ]
+    },
+    {
+      "name": "a toast differing in tone, text, link or call is another toast",
+      "steps": [
+        {"post": {"tone": "warning", "text": "Failed."}, "shown": ["Failed."]},
+        {"post": {"tone": "danger", "text": "Failed."}, "shown": ["Failed.", "Failed."]},
+        {"post": {"tone": "danger", "text": "Failed.", "link": {"label": "View", "to": "/a"}}, "shown": ["Failed.", "Failed.", "Failed."]},
+        {"dismiss": "Failed.", "shown": ["Failed.", "Failed."]},
+        {"dismiss": "Failed.", "shown": ["Failed."]},
+        {"dismiss": "Failed.", "shown": []},
+        {"post": {"tone": "warning", "text": "Archived.", "link": {"label": "View", "to": "/a"}}, "shown": ["Archived."]},
+        {"post": {"tone": "warning", "text": "Archived.", "link": {"label": "View", "to": "/b"}}, "shown": ["Archived.", "Archived."]},
+        {"post": {"tone": "warning", "text": "Archived.", "link": {"label": "View", "to": "/a"}, "call": {"label": "Undo", "mutation": "restore", "inputs": {"id": "1"}}}, "shown": ["Archived.", "Archived.", "Archived."]}
+      ]
+    },
+    {
+      "name": "a toast whose call has other inputs is another toast, and one with the same inputs is the same",
+      "steps": [
+        {"post": {"tone": "warning", "text": "Archived.", "call": {"label": "Undo", "mutation": "restore", "inputs": {"id": "1"}}}, "shown": ["Archived."]},
+        {"post": {"tone": "warning", "text": "Archived.", "call": {"label": "Undo", "mutation": "restore", "inputs": {"id": "2"}}}, "shown": ["Archived.", "Archived."]},
+        {"post": {"tone": "warning", "text": "Archived.", "call": {"label": "Undo", "mutation": "restore", "inputs": {"id": "2"}}}, "shown": ["Archived.", "Archived."]}
+      ]
+    },
+    {
+      "name": "an equal toast restarts the timer of the one shown",
+      "steps": [
+        {"post": {"tone": "info", "text": "Saved."}, "shown": ["Saved."]},
+        {"elapse": 4000, "shown": ["Saved."]},
+        {"post": {"tone": "info", "text": "Saved."}, "shown": ["Saved."]},
+        {"elapse": 4000, "shown": ["Saved."]},
+        {"elapse": 2000, "shown": []}
+      ]
+    },
+    {
+      "name": "a call that succeeds withdraws its toast and runs its onSuccess",
+      "steps": [
+        {"post": {"tone": "success", "text": "Archived.", "call": {"label": "Undo", "mutation": "restore", "inputs": {"id": "1"}, "onSuccess": [{"tone": "success", "text": "Restored."}]}}, "shown": ["Archived."]},
+        {"press": "Archived.", "shown": ["Archived."], "busy": ["Archived."]},
+        {"answer": "success", "shown": ["Restored."], "busy": []}
+      ]
+    },
+    {
+      "name": "a call that succeeds withdraws its toast before its onSuccess posts, so the limit drops nothing else",
+      "steps": [
+        {"post": {"tone": "warning", "text": "X"}, "shown": ["X"]},
+        {"post": {"tone": "success", "text": "Archived.", "call": {"label": "Undo", "mutation": "restore", "inputs": {"id": "1"}, "onSuccess": [{"tone": "warning", "text": "Restored."}]}}, "shown": ["X", "Archived."]},
+        {"post": {"tone": "warning", "text": "Y"}, "shown": ["X", "Archived.", "Y"]},
+        {"press": "Archived.", "shown": ["X", "Archived.", "Y"], "busy": ["Archived."]},
+        {"answer": "success", "shown": ["X", "Y", "Restored."], "busy": []}
+      ]
+    },
+    {
+      "name": "a call that fails leaves its toast pressable and runs its onFailure",
+      "steps": [
+        {"post": {"tone": "success", "text": "Archived.", "call": {"label": "Undo", "mutation": "restore", "inputs": {"id": "1"}, "onFailure": [{"tone": "danger", "text": "Could not undo."}]}}, "shown": ["Archived."]},
+        {"press": "Archived.", "shown": ["Archived."], "busy": ["Archived."]},
+        {"answer": "failure", "shown": ["Archived.", "Could not undo."], "busy": []},
+        {"press": "Archived.", "shown": ["Archived.", "Could not undo."], "busy": ["Archived."]},
+        {"answer": "failure", "shown": ["Archived.", "Could not undo."], "busy": []}
+      ]
+    },
+    {
+      "name": "a toast with a call pending takes no second press",
+      "steps": [
+        {"post": {"tone": "success", "text": "Archived.", "call": {"label": "Undo", "mutation": "restore", "inputs": {"id": "1"}, "onSuccess": [{"tone": "success", "text": "Restored."}]}}, "shown": ["Archived."]},
+        {"press": "Archived.", "shown": ["Archived."], "busy": ["Archived."]},
+        {"press": "Archived.", "shown": ["Archived."], "busy": ["Archived."]},
+        {"answer": "success", "shown": ["Restored."], "busy": []}
+      ]
+    },
+    {
+      "name": "a dismissed toast whose call is pending still runs its lists",
+      "steps": [
+        {"post": {"tone": "success", "text": "Archived.", "call": {"label": "Undo", "mutation": "restore", "inputs": {"id": "1"}, "onSuccess": [{"tone": "success", "text": "Restored."}], "onFailure": [{"tone": "danger", "text": "Could not undo."}]}}, "shown": ["Archived."]},
+        {"press": "Archived.", "shown": ["Archived."], "busy": ["Archived."]},
+        {"dismiss": "Archived.", "shown": [], "busy": []},
+        {"answer": "success", "shown": ["Restored."], "busy": []}
+      ]
+    },
+    {
+      "name": "a toast dropped by the limit while its call is pending still runs its lists",
+      "steps": [
+        {"post": {"tone": "success", "text": "Archived.", "call": {"label": "Undo", "mutation": "restore", "inputs": {"id": "1"}, "onFailure": [{"tone": "danger", "text": "Could not undo."}]}}, "shown": ["Archived."]},
+        {"press": "Archived.", "shown": ["Archived."], "busy": ["Archived."]},
+        {"post": {"tone": "warning", "text": "Two"}, "shown": ["Archived.", "Two"], "busy": ["Archived."]},
+        {"post": {"tone": "warning", "text": "Three"}, "shown": ["Archived.", "Two", "Three"], "busy": ["Archived."]},
+        {"post": {"tone": "warning", "text": "Four"}, "shown": ["Two", "Three", "Four"], "busy": []},
+        {"answer": "failure", "shown": ["Three", "Four", "Could not undo."], "busy": []}
+      ]
+    }
+  ]
+}

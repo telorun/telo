@@ -609,7 +609,7 @@ text `create` or `edit` when none was written — and `press` is `edit`'s press
 when only that is written. A `form` node carries `id`, `record` (`{ basePath, key, answer }`, or `null`
 without a collection; `key` a binding or `null`), `initialValues` (a binding or
 `null`), `unsaved` and `afterSubmit`, declared or defaulted, `onSubmit` and
-`autosave` (each a call-shaped write or `null`) and `onSuccess` and
+`autosave` (each a call-shaped write or `null`) and `onSuccess`, `onFailure` and
 `clearAnswerOn` (lists, `[]` when none) — see [what a form
 receives](form.md#what-a-renderer-receives). The defaults are this module's, filled
 before the node is provided, so two renderers cannot disagree about them and none
@@ -622,11 +622,11 @@ none), `rowActions` (an empty list when the listing declares none),
 press); a `list` node always carries
 `rowActionsDisplay` and carries `rowActions` when it declares them, and
 `rowStyle` and a column's `style` — each `{ by, cases, default? }`, `by` a
-binding — when declared. A call is `{ mutation, inputs, label, confirm?, prompt, onSuccess, result?,
-failure, enabled? }`: `mutation` the write's [spec](mutation.md#what-a-renderer-receives),
+binding — when declared. A call is `{ mutation, inputs, label, confirm?, prompt, onSuccess, onFailure,
+result?, failure, enabled? }`: `mutation` the write's [spec](mutation.md#what-a-renderer-receives),
 `inputs` maps each input property to a binding, `confirm` is present exactly when
 the call asks a question, `prompt` is `{ schema, fields, groups }` or `null`,
-`onSuccess` a list of effect specs (`[]` when none), `result` present when
+`onSuccess` and `onFailure` lists of effect specs (`[]` when none), `result` present when
 written, `failure` the tree with the default filled in, and `enabled` exactly
 when declared; a layout's move is the same without `label` and `result`. A
 `button` node is `{ action, button, style?, shown?, fill }` (`button` a

@@ -86,6 +86,7 @@
       "surface-close"
     ],
     "shared": ["icon", "glyph", "select-content", "select-item", "combobox-content", "combobox-group", "combobox-item", "menu", "menu-item", "tooltip"],
+    "toaster": ["toaster", "toast", "toast-text", "toast-actions"],
     "status": ["component", "error", "error-code", "error-message", "loading"]
   },
   "states": {
@@ -100,7 +101,7 @@
     "data-dirty": { "values": ["true"], "on": ["form"] },
     "data-compact": { "values": ["true"], "on": ["app"] },
     "data-surface": { "values": ["dialog", "drawer", "popover", "inline", "panel", "page", "confirmation"], "on": ["surface"] },
-    "data-side": { "values": ["start", "end", "top", "bottom"], "on": ["app", "surface", "filters", "aside", "split"] },
+    "data-side": { "values": ["start", "end", "top", "bottom"], "on": ["app", "surface", "filters", "aside", "split", "toaster"] },
     "data-placement": { "values": ["above", "aside", "collapsible", "overlay"], "on": ["filters"] },
     "data-active": { "values": ["true"], "on": ["filter", "filter-chip"] },
     "data-pending": { "values": ["true"], "on": ["filters"] },
@@ -120,7 +121,7 @@
     "data-record": { "values": ["true"], "on": ["link"] },
     "data-selected": { "values": ["true"], "on": ["table-row", "list-item", "card", "board-card", "calendar-event", "timeline-bar", "tree-item"] },
     "data-display": { "values": ["inline", "menu"], "on": ["row-actions"] },
-    "data-align": { "values": ["start", "center", "end"], "on": ["surface", "markdown-table-header-cell", "markdown-table-cell"] },
+    "data-align": { "values": ["start", "center", "end"], "on": ["surface", "markdown-table-header-cell", "markdown-table-cell", "toaster"] },
     "data-modal": { "values": ["true", "false"], "on": ["surface"] },
     "data-sorted": { "values": ["asc", "desc"], "on": ["table-header-cell", "listing-sort-option"] },
     "data-width": { "values": ["contained", "full"], "on": ["header", "footer", "page"] },

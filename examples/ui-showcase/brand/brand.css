@@ -442,6 +442,30 @@ h3[data-telo-part="text"] { font-size: var(--telo-font-size-lg); font-style: ita
   color: var(--telo-color-surface);
   font-size: var(--telo-font-size-sm);
 }
+/* A toast: paper card, its tone a rule at its start edge, its buttons under the text. */
+[data-telo-part="toaster"] { gap: var(--telo-space-sm); outline: none; }
+[data-telo-part="toast"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: var(--telo-space-sm);
+  row-gap: var(--telo-space-xs);
+  padding: var(--telo-space-sm) var(--telo-space-sm) var(--telo-space-sm) var(--telo-space-md);
+  border: 1px solid var(--telo-color-border);
+  border-inline-start: 3px solid var(--telo-color-muted);
+  border-radius: var(--telo-radius-md);
+  background: var(--telo-color-surface);
+  color: var(--telo-color-text);
+  box-shadow: var(--telo-shadow-md);
+  outline: none;
+}
+[data-telo-part="toast"]:focus-visible { outline: 2px solid var(--telo-color-accent); outline-offset: 2px; }
+[data-telo-part="toast"][data-tone="success"] { border-inline-start-color: var(--telo-color-success); }
+[data-telo-part="toast"][data-tone="warning"] { border-inline-start-color: var(--telo-color-warning); }
+[data-telo-part="toast"][data-tone="danger"] { border-inline-start-color: var(--telo-color-danger); }
+[data-telo-part="toast"] > button { grid-column: 2; grid-row: 1; width: 1.75rem; height: 1.75rem; padding: 0; justify-content: center; color: var(--telo-color-muted); }
+[data-telo-part="toast-text"] { grid-column: 1; margin: 0; padding-block: 0.25rem; line-height: 1.4; }
+[data-telo-part="toast-actions"] { grid-column: 1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--telo-space-xs); }
 
 /* ---- Status ---- */
 [data-telo-part="component"]:not([data-fill="true"]) { min-height: 1rem; }

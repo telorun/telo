@@ -4,11 +4,11 @@ import { segment } from "./address-wire.js";
 import { AutosaveWrites } from "./autosave-writes.js";
 import { resolveBasePath, unresolvedFailure, type BasePath } from "./base-path.js";
 import { conditionHolds, fillAttribute, readBinding, styleAttribute, type Binding, type Condition } from "./bindings.js";
-import { destinationReads, useDestinationContext } from "./destination.js";
+import { useDestinationContext } from "./destination.js";
 import { FormRecordsContext, type FormWriteName } from "./form-records.js";
 import { placedFindings, placedIssues, type PlacedFindings } from "./form-write-findings.js";
 import { useHost, useHostStore, type UnsavedGuard } from "./host.js";
-import { MutationRunnerContext, runMutation, type CallEnvironment, type EffectSpec, type MutationSpec } from "./mutation-call.js";
+import { MutationRunnerContext, effectReads, runMutation, type CallEnvironment, type EffectSpec, type MutationSpec } from "./mutation-call.js";
 import { boundRecord } from "./mutation-calls.js";
 import { ErrorNode, Node, type SpecNode } from "./nodes.js";
 import { useRecordEntry, type EntrySpec } from "./record-entry.js";
@@ -18,7 +18,7 @@ import { Confirmation } from "./surface.js";
 import { findingText, useSay, useText, type WireText } from "./texts.js";
 import { mergePatchOf } from "./merge-patch.js";
 import { Settling, type ChangeKind } from "./typing-pause.js";
-import { networkError, responseError, type ErrorSpec, errorSpec } from "./ui-error.js";
+import { networkError, requestErrorOf, responseError, type ErrorSpec, errorSpec, type RequestError } from "./ui-error.js";
 import { validate, type JsonSchema } from "./validation.js";
 
 /** A write a form runs: its mutation, the record its inputs bind, and the trees drawn from its answer. */
@@ -54,6 +54,8 @@ interface FormSpec extends EntrySpec {
   onSubmit: SubmitSpec | null;
   autosave: AutosaveSpec | null;
   onSuccess: EffectSpec[];
+  /** Run when a submit write was sent and did not succeed, over `values` and `error`. */
+  onFailure: EffectSpec[];
   clearAnswerOn: string[];
 }
 
@@ -141,6 +143,7 @@ function FormBody({ node, spec, basis, onGuard }: { node: SpecNode; spec: FormSp
   const text = useText();
   const { prefix } = useContext(RendererContext);
   const roots = useContext(RootsContext);
+  const placed = roots;
   const opened = useContext(OpenedPageContext);
   const forms = useContext(FormRecordsContext);
   const runner = useContext(MutationRunnerContext);
@@ -331,7 +334,8 @@ function FormBody({ node, spec, basis, onGuard }: { node: SpecNode; spec: FormSp
   /** What follows a submit write that succeeded: its result is drawn, `afterSubmit` applies, then the effects run over `values` and `result`. */
   const submitted = (result: Record<string, unknown> | undefined, savedRecord?: Record<string, unknown>) => {
     release();
-    const roots = { values: entry.record, result };
+    // The roots where the form is placed stay in scope beside its own.
+    const roots = { ...placed, values: entry.record, result };
     // Closing is the surface's: a page of its own stays, saved.
     if (spec.afterSubmit === "close" && opened) opened.close();
     else {
@@ -339,8 +343,11 @@ function FormBody({ node, spec, basis, onGuard }: { node: SpecNode; spec: FormSp
       setSaved(next);
       entry.reset(next);
     }
-    void runner.follow(spec.onSuccess, roots, env.current());
+    runner.run(spec.onSuccess, roots, env.current());
   };
+
+  /** What follows a submit write that was sent and did not succeed: the effects run over `values` and `error`. */
+  const failedWrite = (error: RequestError | ErrorSpec) => runner.run(spec.onFailure, { ...placed, values: entry.record, error }, env.current());
 
   const sendSubmit = async (write: SubmitSpec, input: Record<string, unknown>) => {
     busy(true);
@@ -354,6 +361,7 @@ function FormBody({ node, spec, basis, onGuard }: { node: SpecNode; spec: FormSp
     forms.notify(spec.id);
     if (!outcome.ok) {
       if (outcome.error.status === 400) refuseFor("submit", write, outcome.body);
+      failedWrite(outcome.error);
       return;
     }
     runner.invalidate(write.mutation, outcome, at);
@@ -405,9 +413,12 @@ function FormBody({ node, spec, basis, onGuard }: { node: SpecNode; spec: FormSp
           throw networkError(error);
         });
       if (response.status === 400) {
-        const { byField, other } = refusalOf(await response.json(), shown, say);
+        const refusal = await response.json();
+        const { byField, other } = refusalOf(refusal, shown, say);
         entry.refuse(byField, other);
-        return setRefused(true);
+        setRefused(true);
+        failedWrite(requestErrorOf(400, refusal, say));
+        return;
       }
       if (response.status === 412) {
         // The record changed since it was read: read it again for its validator, and keep what was typed.
@@ -424,7 +435,9 @@ function FormBody({ node, spec, basis, onGuard }: { node: SpecNode; spec: FormSp
         answeredJson = true;
       }
     } catch (error) {
-      setFailure(errorSpec(error, "ERR_UI_REQUEST_FAILED"));
+      const failed = errorSpec(error, "ERR_UI_REQUEST_FAILED");
+      setFailure(failed);
+      failedWrite(failed);
       return;
     } finally {
       busy(false);
@@ -434,11 +447,15 @@ function FormBody({ node, spec, basis, onGuard }: { node: SpecNode; spec: FormSp
       const findings = isRecord(answered) ? validate(written.answer, answered, [], { formats: false }) : [];
       const refusal = !isRecord(answered) ? say("answerNotObject") : findings.length > 0 ? say("answerNotModel", { detail: findingText(findings[0], say) }) : undefined;
       if (refusal !== undefined) {
-        setFailure({ type: "error", code: "ERR_UI_RESPONSE_INVALID", message: refusal });
+        const invalid = { type: "error" as const, code: "ERR_UI_RESPONSE_INVALID", message: refusal };
+        setFailure(invalid);
+        failedWrite(invalid);
         return;
       }
-    } else if (spec.onSuccess.some((effect) => destinationReads(effect, "result"))) {
-      setFailure({ type: "error", code: "ERR_UI_RESPONSE_INVALID", message: say("answerNotJson") });
+    } else if (spec.onSuccess.some((effect) => effectReads(effect, "result"))) {
+      const invalid = { type: "error" as const, code: "ERR_UI_RESPONSE_INVALID", message: say("answerNotJson") };
+      setFailure(invalid);
+      failedWrite(invalid);
       return;
     }
     const stored = isRecord(answered) ? answered : undefined;

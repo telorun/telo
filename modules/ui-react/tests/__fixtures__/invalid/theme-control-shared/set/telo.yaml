@@ -7,20 +7,18 @@ metadata:
     Test fixture: a shared library exporting one control set implementing the
     box control.
 lifecycle: shared
-imports:
-  UiReact: ../../../../../
+imports: { UiReact: ../../../../../ }
 exports:
   resources: [boxes]
   browser:
     - specifier: "@fixture/shared-boxes"
       path: ./browser/checkbox.js
       source: ./checkbox.js
-      abi: ui_react_controls-4
+      abi: ui_react_controls-5
       external: [react, react/jsx-runtime, react-dom]
       exports: [Checkbox]
 ---
 kind: UiReact.Controls
-metadata:
-  name: boxes
+metadata: { name: boxes }
 entry: "@fixture/shared-boxes"
 implements: [Checkbox]

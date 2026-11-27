@@ -347,7 +347,7 @@ steps:
           to: { type: navigate, href: { path: { value: "/todos/{id}" }, pathParams: { id: { root: row, path: [id] } }, queryParams: {} } }
           label: { text: Change, context: null, lang: und, computed: false }
         pressIsEdit: true
-        delete: true
+        delete: { onSuccess: [], onFailure: [] }
         assets:
           - { name: badges.js, mediaType: text/javascript, sameDigest: true }
           - { name: badges.css, mediaType: text/css, sameDigest: true }

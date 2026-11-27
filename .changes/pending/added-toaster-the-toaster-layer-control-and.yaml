@@ -1,0 +1,8 @@
+units:
+  modules/ui-react: Added
+body: "Toaster: the Toaster layer control and the ui_react_controls-5 generation (26
+  controls, eleven of them layer controls, replacing ui_react_controls-4, which is no
+  longer hosted), UiReact.App.toaster, the toaster, toast, toast-text and toast-actions
+  parts, the host field toast(), and the renderer running toast, close and onFailure
+  effects. Breaking: a controls set written against ui_react_controls-4 is refused, and
+  a layer set must implement all eleven layer controls."

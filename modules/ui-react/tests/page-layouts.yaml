@@ -121,7 +121,7 @@ steps:
           children: !cel "steps.nowhere.result.body.children.map(n, n.type)"
       expected:
         app:
-          keys: [bundle, compactBelow, controls, digest, layout, pages, specVersion, stylesheets, texts, title]
+          keys: [bundle, compactBelow, controls, digest, layout, pages, specVersion, stylesheets, texts, title, toaster]
           named: [true, true, true, true, true]
           sharedIsDefault: true
           inlineAreTwo: true
@@ -141,7 +141,7 @@ steps:
         staffDiffers: true
         emptyLayout: { width: contained, header: [], footer: [], aside: false }
         plain:
-          keys: [bundle, compactBelow, controls, digest, pages, specVersion, stylesheets, texts, title]
+          keys: [bundle, compactBelow, controls, digest, pages, specVersion, stylesheets, texts, title, toaster]
           named: [false]
         revalidated: 304
         revalidatedForAnother: 200

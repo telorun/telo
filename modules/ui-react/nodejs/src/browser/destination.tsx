@@ -56,6 +56,8 @@ export interface PageOpening {
   opener: HTMLElement | null;
   /** Where an inline surface is drawn under the record that opened it, where a listing's record did. */
   detail?: DetailSlot;
+  /** Opened from a place in no surface (a toast): a surface placed against what opened it takes its `compact`, else a dialog. */
+  unplaced?: boolean;
 }
 
 /** What hosts the opened page: the application shell, told whether the opening is pressed inside the page it holds. */
@@ -87,6 +89,8 @@ export interface DestinationOrigin {
   opener?: HTMLElement | null;
   /** The place under the record, where what is pressed is one. */
   detail?: DetailSlot;
+  /** What opened it sits in no surface and anchors nothing: a toast's button. */
+  unplaced?: boolean;
 }
 
 /** What every destination pressed here is gone to from, less its address. */
@@ -140,7 +144,7 @@ export function openDestination(to: DestinationWire, context: DestinationContext
       return followAddress(context);
     case "openPage":
       if (context.pageHost === null) throw new Error("The renderer opened a page outside an application.");
-      context.pageHost.open({ to, address: context.address, naming: origin.naming, opener: origin.opener ?? focused(), detail: origin.detail });
+      context.pageHost.open({ to, address: context.address, naming: origin.naming, opener: origin.opener ?? focused(), detail: origin.detail, unplaced: origin.unplaced });
       return Promise.resolve(true);
   }
 }
@@ -180,16 +184,17 @@ export function DestinationAnchor({
   href,
   naming,
   detail,
+  unplaced,
   onClick,
   ...rest
-}: { destination: ResolvedDestination; href: string; naming: string; detail?: DetailSlot } & AnchorProps): ReactNode {
+}: { destination: ResolvedDestination; href: string; naming: string; detail?: DetailSlot; unplaced?: boolean } & AnchorProps): ReactNode {
   const context = useDestinationContext();
   const follow = (event: MouseEvent<HTMLAnchorElement>) => {
     onClick?.(event);
     const at = { ...context, address: destination.address };
     if (leftToBrowser(event) || destinationLoads(destination.to, at)) return;
     event.preventDefault();
-    openDestination(destination.to, at, { naming, opener: event.currentTarget, detail });
+    openDestination(destination.to, at, { naming, opener: event.currentTarget, detail, unplaced });
   };
   return <CurrentAnchor {...rest} lead={leadOf(destination)} href={href} onClick={follow} />;
 }

@@ -17,6 +17,8 @@ export type { AssetFile } from "./composite.js";
 export { deliveredMenu, placed, presented, withDestinations, type AuthoredNode, type RootShapes } from "./node-resolution.js";
 // Where a press goes, as a renderer receives it.
 export { destinationAt, isDestination, type DestinationSpec } from "./destination.js";
+// What follows an answer, as a renderer receives it: a destination, a toast or the closing of a surface.
+export type { CloseSpec, EffectSpec, MutationPressSpec, ToastSpec, ToastTone } from "./effect.js";
 // A declared read as a renderer receives it, and the bindings of its body.
 export { isQuery, type BodyBinding, type QueryInstance, type QuerySpec } from "./query-controller.js";
 // What pressing a region or a listing's record does, as a renderer receives it.
@@ -111,6 +113,7 @@ export {
   PickerFieldController,
 } from "./field-controllers.js";
 export { NavigateController, OpenPageController } from "./destination.js";
+export { CloseController, ToastController } from "./toast-controller.js";
 export {
   DialogController,
   DrawerController,

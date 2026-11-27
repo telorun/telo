@@ -35,6 +35,7 @@ messages:
   siteNavigation: Site
   collapseNavigation: Réduire la navigation
   expandNavigation: Développer la navigation
+  toaster: Notifications
   search: "Rechercher : {$label}"
   remove: "Retirer : {$label}"
   clear: "Effacer : {$label}"

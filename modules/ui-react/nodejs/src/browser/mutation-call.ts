@@ -5,9 +5,10 @@ import { destinationReads, openDestination, resolveDestination, type Destination
 import type { Host } from "./host.js";
 import type { Field, Group } from "./record-fields.js";
 import { underMount } from "./renderer-context.js";
-import { requestErrorOf, unansweredError, type RequestError } from "./ui-error.js";
+import { errorSpec, requestErrorOf, unansweredError, type RequestError } from "./ui-error.js";
 import { validate, type JsonSchema } from "./validation.js";
 import { findingText, type Say, type WireText } from "./texts.js";
+import type { ToastWire } from "./toasts.js";
 
 type Node = { type: string } & Record<string, any>;
 
@@ -37,8 +38,21 @@ export interface PromptSpec {
   groups: Group[];
 }
 
-/** What follows a success: today a destination. */
-export type EffectSpec = DestinationWire;
+/** What follows an answer: a destination, a toast, or closing the surface the call ran in. */
+export type EffectSpec = DestinationWire | ToastWire | { type: "close" };
+
+/** Whether an effect reads the named root: a destination's address, or a toast's text, link and call inputs. */
+export function effectReads(effect: EffectSpec, root: string): boolean {
+  if (effect.type === "close") return false;
+  if (effect.type !== "toast") return destinationReads(effect, root);
+  const reads = (binding: unknown) => (binding as { root?: unknown } | null)?.root === root;
+  const textReadsRoot = (text: unknown) => Object.values((text as { values?: Record<string, unknown> }).values ?? {}).some(reads);
+  return (
+    textReadsRoot(effect.text) ||
+    (effect.link !== undefined && (destinationReads(effect.link.to, root) || textReadsRoot(effect.link.label))) ||
+    (effect.call !== undefined && (Object.values(effect.call.inputs).some(reads) || textReadsRoot(effect.call.label)))
+  );
+}
 
 /** What a call is, wherever it is held: a row's, an annotation's, a `button` node's or a layout's move. */
 export interface MutationCallSpec {
@@ -53,6 +67,8 @@ export interface MutationCallSpec {
   enabled?: Condition & { disabledText: WireText };
   /** Run in order once the answer arrives. */
   onSuccess: EffectSpec[];
+  /** Run in order when the write does not succeed, over `error` and `input`. */
+  onFailure: EffectSpec[];
   /** What is drawn of a success; a layout's move draws none. */
   result?: Node;
   failure: Node;
@@ -138,10 +154,13 @@ function textReads(text: unknown): boolean {
 }
 
 /** What a call reads of the answer, for deciding whether its body is read at all. */
-type Answered = Pick<MutationCallSpec, "mutation" | "onSuccess" | "result">;
+type Reads = Pick<MutationCallSpec, "mutation" | "onSuccess" | "result">;
 
-const readsBody = (call: Answered): boolean =>
-  readsResult(call.result) || call.onSuccess.some((effect) => destinationReads(effect, "result")) || call.mutation.invalidates.some((each) => addressReads(each, "result"));
+/** A call, as the runner executes it. */
+type Answered = Reads & Pick<MutationCallSpec, "onFailure">;
+
+const readsBody = (call: Reads): boolean =>
+  readsResult(call.result) || call.onSuccess.some((effect) => effectReads(effect, "result")) || call.mutation.invalidates.some((each) => addressReads(each, "result"));
 
 /**
  * Send a record to a mutation, its path read under the mount `prefix`, and
@@ -150,7 +169,7 @@ const readsBody = (call: Answered): boolean =>
  * follows reads it — the `result` tree, an effect or an invalidation through
  * it — and is then held to the declared answer.
  */
-export async function runMutation(host: Host, prefix: string, call: Answered, input: Record<string, unknown>, say: Say): Promise<Outcome> {
+export async function runMutation(host: Host, prefix: string, call: Reads, input: Record<string, unknown>, say: Say): Promise<Outcome> {
   const { mutation } = call;
   const findings = validate(mutation.schema, input);
   if (findings.length > 0) {
@@ -202,6 +221,14 @@ export interface CallEnvironment {
   also?: readonly string[];
   /** The element a page the success opens is placed against, read when it opens. */
   opener?: () => HTMLElement | null;
+  /** Where nothing is pressed (a toast's button), a page it opens is placed against no element. */
+  unplaced?: boolean;
+  /** Closes the opened surface the call ran in, if it is still open; absent where it ran in none. */
+  close?: () => void;
+  /** The roots the call is placed under; its effects read them beside `result` / `error` and `input`, which shadow them. */
+  placed?: Readonly<Record<string, unknown>>;
+  /** Told whether the write succeeded, before its lists run. */
+  answered?: (ok: boolean) => void;
 }
 
 /**
@@ -214,6 +241,9 @@ export interface CallEnvironment {
  */
 export class MutationRunner {
   private readonly tails = new Map<string, Promise<void>>();
+
+  /** `close` closes the opened surface the runner's calls are pressed in, if it is still open. */
+  constructor(private readonly close?: () => void) {}
 
   /**
    * Run `work` — one request — once every earlier one of the same serial
@@ -250,28 +280,61 @@ export class MutationRunner {
   /**
    * Run effects in the order written over `roots`, each once the one before
    * has happened; a move the user chose to stay for ends the sequence. An
-   * effect whose address does not resolve goes nowhere and the next runs.
+   * effect whose address does not resolve goes nowhere and the next runs. A
+   * toast is posted into the application's toaster over the same roots, and
+   * `close` closes the surface the call ran in.
    */
-  async follow(effects: readonly EffectSpec[], roots: Readonly<Record<string, unknown>>, env: Pick<CallEnvironment, "destinations" | "naming" | "opener">): Promise<void> {
+  async follow(effects: readonly EffectSpec[], roots: Readonly<Record<string, unknown>>, env: Pick<CallEnvironment, "destinations" | "naming" | "opener" | "unplaced" | "close">): Promise<void> {
+    const close = env.close ?? this.close;
     for (const effect of effects) {
-      const destination = resolveDestination(effect, roots, "onSuccess");
+      if (effect.type === "toast") {
+        env.destinations.store.toasts.post(effect, roots, close);
+        continue;
+      }
+      if (effect.type === "close") {
+        close?.();
+        continue;
+      }
+      const destination = resolveDestination(effect, roots, "effect");
       if (destination === undefined) continue;
-      const gone = await openDestination(destination.to, { ...env.destinations, address: destination.address }, { naming: env.naming, opener: env.opener?.() });
+      const gone = await openDestination(
+        destination.to,
+        { ...env.destinations, address: destination.address },
+        { naming: env.naming, opener: env.opener?.(), unplaced: env.unplaced },
+      );
       if (!gone) return;
     }
   }
 
   /** What a call's success does beyond being drawn: its invalidations, then its effects over `result` and `input`. */
-  succeed(call: Pick<MutationCallSpec, "mutation" | "onSuccess">, outcome: Extract<Outcome, { ok: true }>, env: CallEnvironment): Promise<void> {
+  async succeed(call: Pick<MutationCallSpec, "mutation" | "onSuccess">, outcome: Extract<Outcome, { ok: true }>, env: CallEnvironment): Promise<void> {
     this.invalidate(call.mutation, outcome, env);
-    return this.follow(call.onSuccess, { result: outcome.result, input: outcome.input }, env);
+    await this.follow(call.onSuccess, { ...env.placed, result: outcome.result, input: outcome.input }, env);
   }
 
-  /** Run a call with its record: queued as its mutation says, then, on a success, followed. */
+  /** What a write that did not succeed does: its `onFailure` effects over `error` and `input`. */
+  fail(call: Pick<MutationCallSpec, "onFailure">, outcome: Extract<Outcome, { ok: false }>, env: CallEnvironment): Promise<void> {
+    return this.follow(call.onFailure, { ...env.placed, error: outcome.error, input: outcome.input }, env);
+  }
+
+  /** Run a call with its record: queued as its mutation says, then followed by its `onSuccess` or its `onFailure`. */
   async execute(call: Answered, input: Record<string, unknown>, env: CallEnvironment): Promise<Outcome> {
     const outcome = await this.enqueue(call.mutation, () => runMutation(env.host, env.prefix, call, input, env.say));
-    if (outcome.ok) void this.succeed(call, outcome, env);
+    env.answered?.(outcome.ok);
+    const followed = outcome.ok ? this.succeed(call, outcome, env) : this.fail(call, outcome, env);
+    followed.catch((error) => this.report(error, env));
     return outcome;
+  }
+
+  /** Follow `effects` where nothing awaits them, a list that could not run reported rather than lost. */
+  run(effects: readonly EffectSpec[], roots: Readonly<Record<string, unknown>>, env: Parameters<MutationRunner["follow"]>[2]): void {
+    this.follow(effects, roots, env).catch((error) => this.report(error, env));
+  }
+
+  /** A list that could not run is shown as a danger toast, which outlasts the place that pressed the call. */
+  private report(error: unknown, env: Pick<CallEnvironment, "destinations">): void {
+    const failure = errorSpec(error, "ERR_UI_EFFECT_FAILED");
+    env.destinations.store.toast({ text: `${failure.code}: ${failure.message}`, tone: "danger" });
   }
 }
 

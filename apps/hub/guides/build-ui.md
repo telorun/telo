@@ -10,15 +10,15 @@ Rules:
   declared kind; a component of your own is a library's browser entry.
 - **Exact schemas and `imports:` lines** of `ui`, `ui-react`, `http-server`,
   `data-model` and (admin screens) `crud` / `crud-ui`: the [hub](https://hub.telo.run) (`get_kinds`).
-- **The API comes first.** A screen calls routes, never a database: declare the routes, then the screen.
+- **The API comes first.** A screen calls routes, never a database; declare the routes first.
 
 ## When a screen is the answer
 
 Reach for `ui` when a person browses, filters, creates, edits or deletes
-records, or runs an operation.
+records or runs an operation.
 
 The **application** imports `ui`, `ui-react` and `http-server`, mounts the
-renderer on its server and owns the pages. A **library** describing its own
+renderer on its server and owns the pages. A **library** describing its
 domain's interface imports `ui` alone and exports composites (a listing, a
 form, a `Ui.View`) as instances; it never imports a renderer.
 
@@ -79,8 +79,8 @@ inline; `taskTable` is used twice. List a `Telo.OpenUrl` after the server in
 - `title` (the document title) and `theme` (`!ref UiReact.defaultTheme`, or
   another) are required. `pages` (at least one) are `Ui.Page`s — `{ path,
   title?, query?, width?, children }`, each path unique — inline, by `!ref`, or
-  `{ page, layout }`. A page's `title` draws no heading: put `{ type: text,
-  text, style: title }` (the one `h1`) first. A page an address, a navigation
+  `{ page, layout }`. A page's `title` draws no heading: put `{ type: text, text,
+  style: title }` (the one `h1`) first. A page an address, a navigation
   entry or a `Ui.OpenPage` names must be listed (`UI_PAGE_UNROUTED`).
 - `layout` is the `Ui.PageLayout` every page is drawn in (omitted: no chrome):
   `{ width?, header?, aside?, footer? }`; a page's `{ page, layout: { kind:
@@ -93,8 +93,8 @@ inline; `taskTable` is used twice. List a `Telo.OpenUrl` after the server in
   aside is a column, a rail when folded. A composite's regions withhold `request`:
   read it in a page's children or a layout region.
 - A path segment may be a variable: `/reviews/{id}` matches one percent-decoded
-  segment, a literal one winning. Nodes and queries
-  the page places read it as `params.id` (a string); `telo check` refuses a
+  segment, a literal one winning. Nodes and queries the page
+  places read it as `params.id`; `telo check` refuses a
   variable the page lacks. A navigation `page` entry cannot name such a page:
   reach it with a `to` (*Where a press goes*).
 - `navigation: { items }` (required, never derived) names pages by `!ref`:
@@ -222,7 +222,7 @@ relations: { authorId: { collection: !ref authors } }
 ```
 
 A `Ui.CollectionSource` is a collection as the browser reaches it
-(`collection`, `basePath`), one per collection; a `Ui.CollectionPresentation`
+(`collection`, `basePath`); a `Ui.CollectionPresentation`
 shows it (a relation becomes a name in a column, a filter's choices, a picker):
 `source`, and `relations: { <property>: { source, label, hint?, to?, search?,
 pageSize? } }` — `label`, `hint` and `to` read `row`, the related record. A
@@ -411,7 +411,7 @@ takes the JSON Schema inline (a `!ref` there fails at boot): keep it equal to
 - `concurrency: serial` runs every call of it in turn.
 
 A **call** runs one where it is placed: `Ui.MutationCall` is `{ mutation,
-inputs, label, confirm?, prompt?, enabled?, onSuccess?, result?, failure? }` —
+inputs, label, confirm?, prompt?, enabled?, onSuccess?, onFailure?, result?, failure? }` —
 `rowActions` on a listing or `list`, `annotations.action`, and the `action` of a
 `button` node (`inputs: {}` for a mutation taking nothing). A layout's `move` is
 a `Ui.Move`: no `label`, no `result`.
@@ -433,22 +433,35 @@ rowActions:
 - `result:` is a node tree over `result` (typed from `outputModel`; with none,
   `result.<member>` is `CEL_UNKNOWN_FIELD`) and `input`, drawn where the call
   ran; `failure:` over `error` (`status`, `code`, `message`) and `input`, left
-  out it shows code and message. Use a `list` node, not `lists`.
-- `onSuccess` is a list of effects (`Ui.Navigate`, `Ui.OpenPage`) over `result`
-  and `input`, run in order by the page.
+  out it shows code and message.
+- `onSuccess` is a list of effects (`Ui.Navigate`, `Ui.OpenPage`, `Ui.Toast`,
+  `Ui.Close`) over `result` and `input`, run in order by the page; `onFailure`
+  is the same list over `error` and `input` when the write does not succeed.
 
 ### Forms that write, and reads that follow them
 
 A `Ui.Form` is a record editor (`record`), a mutation form or free-standing.
 `onSubmit: { mutation, inputs, label?, confirm?, enabled?, result?, failure? }`
 runs a write when pressed (`inputs` read `values`, `params`, `query`); the form's
-`onSuccess` effects follow `afterSubmit`, over `values` and `result`. `autosave:
+`onSuccess` effects follow `afterSubmit`, over `values` and `result`; its
+`onFailure` runs over `values` and `error` after a submit write fails. `autosave:
 { mutation, inputs, debounce? }` saves as values settle and must replace (`PUT`;
 a `POST` is refused); `clearAnswerOn` clears answers. `record` excludes both.
 
 A `Ui.Query` or `Ui.Listing` with `form: !ref f` reads the form's settled valid
 record as `form` (`body: { period: !cel "form.period" }`): a live preview
 needs no button.
+
+## Toasts
+
+A toast reports an event ("Apollo archived"); a state stays drawn where it holds, so keep the call's `failure:` tree and offer Undo where the record lives too.
+
+```yaml
+onSuccess:
+  - kind: Ui.Toast
+    text: { text: "{$name} archived.", values: { name: !cel "result.name" } }
+    call: { label: Undo, mutation: !ref restoreProject, inputs: { id: !cel "result.id" } }
+```
 
 ## Reads and conditions — `Ui.Query`
 

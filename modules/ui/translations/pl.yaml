@@ -35,6 +35,7 @@ messages:
   siteNavigation: Witryna
   collapseNavigation: Zwiń nawigację
   expandNavigation: Rozwiń nawigację
+  toaster: Powiadomienia
   search: "Szukaj: {$label}"
   remove: "Usuń: {$label}"
   clear: "Wyczyść: {$label}"

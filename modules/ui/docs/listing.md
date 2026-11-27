@@ -22,7 +22,7 @@ layout. How records are drawn is [the layout's](listing-layouts.md).
 | `create` | | [the create button](#create-and-edit): `{ to, label? }`, a [`Ui.Press`](presses.md#presses) with an optional `label`, over `values`, `query` and `params` |
 | `edit` | | [the edit action of each record](#create-and-edit): `{ to, label? }` over `row`, `query` and `params` |
 | `press` | what `edit`'s `to` says | [what pressing a record does](#pressing-a-record): a [`Ui.Press`](presses.md#presses), `{ to, label }`, over `row`, `query` and `params` |
-| `delete` | `false` | whether each record offers a confirmed delete |
+| `delete` | `false` | whether each record offers a [confirmed delete](#delete): `false`, `true`, or `{ onSuccess?, onFailure? }` |
 | `rowActions` | none | [operations each record offers](#row-actions): a [`Ui.MutationCall`](mutation.md#uimutationcall) each |
 | `rowActionsDisplay` | `auto` | [how the actions, edit and delete are drawn](#how-the-actions-are-drawn): `auto`, `inline` or `menu` |
 | `empty` | the text `noRows`, "No rows." | a [node](nodes.md) drawn where the records would be when the reads answer none |
@@ -273,6 +273,7 @@ rowActions:
 | `prompt` | none | a [`Ui.Prompt`](#asking-for-more) the press opens before the write is sent |
 | `enabled` | always | when the record's button can be pressed, over `row`, `query` and `params`, and why not |
 | `onSuccess` | none | [effects](mutation.md#after-a-success) run once the write succeeds |
+| `onFailure` | none | [effects](mutation.md#after-a-success) run when the write does not succeed, over `error` and `input` |
 | `result` | nothing drawn | a node tree drawn in place of the button after a success, over `result` and `input` |
 | `failure` | the error's code and message | a node tree drawn beside the button when the write does not succeed, over `error` and `input` |
 
@@ -333,6 +334,26 @@ Each entry's `inputs` is checked as a record of **its own** mutation's
 The listing refuses a record's inputs itself when it is first read, as
 `ERR_UI_MUTATION_CALL_INPUTS_INVALID`: a key a closed input model does not
 declare, a required input left unbound, or a fixed value its property refuses.
+
+## Delete
+
+`delete: true` offers a confirmed delete. Written as `{ onSuccess?, onFailure? }`
+it also runs [effects](toasts.md#where-effects-are-written) once the delete
+answers, each a list over `row` — and `error` in `onFailure` — beside `query`
+and `params`:
+
+```yaml
+delete:
+  onSuccess:
+    - kind: Ui.Toast
+      text: { text: "{$name} deleted.", values: { name: !cel "row.name" } }
+  onFailure:
+    - kind: Ui.Toast
+      text: { text: "Could not delete {$name}: {$message}", values: { name: !cel "row.name", message: !cel "error.message" } }
+```
+
+A failed delete keeps its confirmation open with the failure drawn in it, as a
+row action's confirmation does, and a failure toast adds to it.
 
 ## Following a form
 
@@ -436,7 +457,7 @@ What the listing provides is a `type: listing` node carrying `schema`,
 `basePath`, `key`, `query`, `filters`, `pageSize`, `paging`, `sort`
 (`{ sortable, initial }`: the properties the viewer may sort by — none when the
 order is fixed — and the order sent until they choose, `-` leading a descending
-one, or null), `show` (`{ count }`), `rowStyle`, `create`, `edit`, `delete`,
+one, or null), `show` (`{ count }`), `rowStyle`, `create`, `edit`, `delete` (`false`, or `{ onSuccess, onFailure }` effect specs),
 `rowActions`, `rowActionsDisplay`, `relations`, `empty`, `layout`, `compact`,
 `press` (a [`Ui.PressSpec`](presses.md#what-a-renderer-receives), `null` when
 none is written) and `reloadEvery` (the interval in milliseconds, present when

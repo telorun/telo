@@ -156,6 +156,7 @@ steps:
           title: !cel "steps.app.result.body.title"
           lang: !cel "steps.app.result.body.lang"
           compactBelow: !cel "steps.app.result.body.compactBelow"
+          toaster: !cel "steps.app.result.body.toaster"
           pages: !cel "steps.app.result.body.pages.map(p, p.path)"
           stylesheets: !cel "steps.app.result.body.stylesheets.map(s, s.substring(s.lastIndexOf('/') + 1))"
           controlStylesheets: !cel "sort(steps.app.result.body.controls.stylesheets.map(c, steps.app.result.body.controls.stylesheets[c].substring(steps.app.result.body.controls.stylesheets[c].lastIndexOf('/') + 1)))"
@@ -163,6 +164,7 @@ steps:
           bundleIsRenderer: !cel "steps.shell.result.body.contains('/_telo/ui/assets/' + steps.app.result.body.bundle + '/renderer.js')"
         appAgain: !cel "steps.appAgain.result.status"
         defaultCompactBelow: !cel "steps.plainApp.result.body.compactBelow"
+        defaultToaster: !cel "steps.plainApp.result.body.toaster"
         defaultPageWidth: !cel "steps.plainPage.result.body.width"
         containedPageWidth: !cel "steps.containedPage.result.body.width"
         page:
@@ -199,8 +201,9 @@ steps:
           status: 200
           cache: private, no-cache
           etagIsDigest: true
-          keys: [bundle, compactBelow, controls, digest, lang, pages, specVersion, stylesheets, texts, title]
+          keys: [bundle, compactBelow, controls, digest, lang, pages, specVersion, stylesheets, texts, title, toaster]
           compactBelow: 48rem
+          toaster: { side: top, align: center }
           specVersion: 1
           title: { lang: en, message: [Fixture Admin] }
           lang: en
@@ -211,12 +214,13 @@ steps:
               checkbox.css, combobox.css, confirmation.css, date-input.css, date-range-input.css, date-time-input.css, dialog.css,
               drawer.css, icon.css, listbox.css, menu.css, multi-select.css, navigation.css, number-input.css,
               option-group.css, popover.css, select.css, slider.css, switch.css, tabs.css, tags-input.css,
-              text-area.css, text-input.css, time-input.css, tooltip.css,
+              text-area.css, text-input.css, time-input.css, toaster.css, tooltip.css,
             ]
           controlSets: []
           bundleIsRenderer: true
         appAgain: 304
         defaultCompactBelow: 40rem
+        defaultToaster: { side: bottom, align: end }
         defaultPageWidth: contained
         containedPageWidth: contained
         page:

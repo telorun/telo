@@ -53,7 +53,7 @@ expect:
     - code: SCHEMA_VIOLATION
       message: "Ui.Listing/onSuccessTo: /rowActions/0/onSuccess must be array"
     - code: REFERENCE_KIND_MISMATCH
-      message: "Ui.Listing/dialogEffect: reference at 'rowActions[0].onSuccess[0]' → 'Ui.Dialog' does not implement 'Ui.Effect' (known implementations: Ui.Navigate, Ui.OpenPage)"
+      message: "Ui.Listing/dialogEffect: reference at 'rowActions[0].onSuccess[0]' → 'Ui.Dialog' does not implement 'Ui.Effect' (known implementations: Ui.Toast, Ui.Close, Ui.Navigate, Ui.OpenPage)"
     - code: CONTRACT_INPUTS_MISMATCH
       message: "Ui.Listing/inputsNoNote: inputs at 'rowActions[0].inputs' do not satisfy annotate's declared inputType: / is missing required property 'note'"
     - code: CEL_UNKNOWN_IDENTIFIER

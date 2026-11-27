@@ -35,6 +35,7 @@ messages:
   siteNavigation: 站点
   collapseNavigation: 收起导航
   expandNavigation: 展开导航
+  toaster: 通知
   search: 搜索{$label}
   remove: 移除{$label}
   clear: 清除{$label}

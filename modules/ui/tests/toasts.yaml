@@ -1,0 +1,262 @@
+kind: Telo.Application
+metadata:
+  name: UiToastsTest
+  version: 1.0.0
+  description: |
+    The toasts fixture is a clean application. A toast and a close reach a
+    renderer as their wire specs, each tag one-to-one with its kind: a toast's
+    `tone` always present — `success` in an `onSuccess` list and `danger` in an
+    `onFailure` list when omitted — its `link` a press and its `call` a press
+    running a mutation, whose omitted `onFailure` is one `danger` toast reading
+    the error's message. `onFailure` stands beside every `onSuccess`, `[]` when
+    none; a listing's `delete` is `false` or `{ onSuccess, onFailure }`.
+lang: en
+imports: { Ui: ../, DataModel: ../../data-model, Assert: ../../assert, Probe: ./__fixtures__/probe }
+targets:
+  - !ref fixture
+  - !ref wire
+---
+kind: Assert.Manifest
+metadata: { name: fixture }
+source: ./__fixtures__/toasts/telo.yaml
+expect: {}
+---
+kind: Telo.JsonSchema
+metadata: { name: Project }
+schema:
+  type: object
+  additionalProperties: false
+  required: [id, name, archived]
+  properties: { id: { type: string }, name: { type: string }, archived: { type: boolean } }
+---
+kind: Telo.JsonSchema
+metadata: { name: ProjectRef }
+schema: { type: object, additionalProperties: false, required: [id], properties: { id: { type: string } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: ProjectName }
+schema: { type: object, additionalProperties: false, required: [name], properties: { name: { type: string } } }
+---
+kind: Ui.Mutation
+metadata: { name: archiveProject }
+inputModel: !ref ProjectRef
+outputModel: !ref Project
+url: { path: "/api/projects/{id}/archive", pathParams: { id: !cel "input.id" } }
+---
+kind: Ui.Mutation
+metadata: { name: restoreProject }
+inputModel: !ref ProjectRef
+url: { path: "/api/projects/{id}/restore", pathParams: { id: !cel "input.id" } }
+---
+kind: Ui.CollectionPresentation
+metadata: { name: projectsPresentation }
+source:
+  kind: Ui.CollectionSource
+  basePath: /api/projects
+  collection:
+    kind: DataModel.Collection
+    model: !ref Project
+    key: id
+    schemas: { create: !ref ProjectName, update: !ref ProjectName }
+    query: { filters: [], sort: [] }
+---
+kind: Ui.Page
+metadata: { name: projectPage }
+path: /projects/{id}
+title: Project
+children: [{ type: text, text: Project }]
+---
+kind: Ui.Listing
+metadata: { name: projects }
+presentation: !ref projectsPresentation
+model: !ref Project
+delete:
+  onSuccess:
+    - kind: Ui.Toast
+      text: { text: "{$name} deleted.", values: { name: !cel "row.name" } }
+  onFailure:
+    - kind: Ui.Toast
+      text: { text: "Could not delete {$name}: {$message}", values: { name: !cel "row.name", message: !cel "error.message" } }
+rowActions:
+  - mutation: !ref archiveProject
+    inputs: { id: !cel "row.id" }
+    label: Archive
+    onSuccess:
+      - kind: Ui.Toast
+        text: { text: "{$name} archived.", values: { name: !cel "result.name" } }
+        link:
+          label: View
+          to: { kind: Ui.OpenPage, page: !ref projectPage, pathParams: { id: !cel "result.id" } }
+        call:
+          label: Undo
+          mutation: !ref restoreProject
+          inputs: { id: !cel "result.id" }
+          onSuccess: [{ kind: Ui.Toast, text: Restored. }]
+    onFailure:
+      - kind: Ui.Toast
+        tone: warning
+        text: { text: "Could not archive the project: {$message}", values: { message: !cel "error.message" } }
+        call:
+          label: Retry
+          mutation: !ref archiveProject
+          inputs: { id: !cel "input.id" }
+          onSuccess:
+            - kind: Ui.Toast
+              text: { text: "{$name} archived.", values: { name: !cel "result.name" } }
+          onFailure: [{ kind: Ui.Close }]
+---
+kind: Ui.Listing
+metadata: { name: deletable }
+presentation: !ref projectsPresentation
+model: !ref Project
+delete: true
+---
+kind: Ui.Listing
+metadata: { name: undeletable }
+presentation: !ref projectsPresentation
+model: !ref Project
+---
+kind: Ui.View
+metadata: { name: archiveButton }
+content:
+  type: button
+  action:
+    mutation: !ref archiveProject
+    inputs: { id: !cel "params.id" }
+    label: Archive
+    onSuccess:
+      - { kind: Ui.Close }
+      - kind: Ui.Toast
+        text: { text: "{$name} archived.", values: { name: !cel "result.name" } }
+---
+kind: Ui.Form
+metadata: { name: create }
+model: !ref ProjectName
+onSubmit:
+  label: Create
+  mutation: { kind: Ui.Mutation, inputModel: !ref ProjectName, outputModel: !ref Project, url: /api/projects }
+  inputs: { name: !cel "values.name" }
+onSuccess:
+  - { kind: Ui.Navigate, href: { path: "/projects/{id}", pathParams: { id: !cel "result.id" } } }
+  - kind: Ui.Toast
+    tone: info
+    text: { text: "{$name} created.", values: { name: !cel "result.name" } }
+onFailure:
+  - kind: Ui.Toast
+    text: { text: "Could not create {$name}: {$message}", values: { name: !cel "values.name", message: !cel "error.message" } }
+---
+kind: Ui.Form
+metadata: { name: rename }
+model: !ref ProjectName
+record: { presentation: !ref projectsPresentation }
+onSuccess: [{ kind: Ui.Toast, text: Saved. }]
+---
+kind: Telo.Sequence
+metadata: { name: wire }
+steps:
+  - name: projects
+    invoke: { kind: Probe.Read, source: !ref projects }
+  - name: deletable
+    invoke: { kind: Probe.Read, source: !ref deletable }
+  - name: undeletable
+    invoke: { kind: Probe.Read, source: !ref undeletable }
+  - name: archiveButton
+    invoke: { kind: Probe.Read, source: !ref archiveButton }
+  - name: create
+    invoke: { kind: Probe.Read, source: !ref create }
+  - name: rename
+    invoke: { kind: Probe.Read, source: !ref rename }
+  - name: delete
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.projects.result.node.delete"
+      expected:
+        onSuccess:
+          - type: toast
+            text:
+              text: { text: "{$name} deleted.", context: null, lang: en, computed: false }
+              values: { name: { root: row, path: [name] } }
+            tone: success
+        onFailure:
+          - type: toast
+            text:
+              text: { text: "Could not delete {$name}: {$message}", context: null, lang: en, computed: false }
+              values: { name: { root: row, path: [name] }, message: { root: error, path: [message] } }
+            tone: danger
+  - name: deleteBooleans
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.deletable.result.node.delete, steps.undeletable.result.node.delete]"
+      expected: [{ onSuccess: [], onFailure: [] }, false]
+  - name: closeAndToast
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.archiveButton.result.node.action.onSuccess, steps.archiveButton.result.node.action.onFailure]"
+      expected:
+        - - { type: close }
+          - type: toast
+            text:
+              text: { text: "{$name} archived.", context: null, lang: en, computed: false }
+              values: { name: { root: result, path: [name] } }
+            tone: success
+        - []
+  - name: archiveToast
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        cel.bind(toast, steps.projects.result.node.rowActions[0].onSuccess[0],
+          { 'tone': toast.tone, 'link': toast.link, 'call': { 'label': toast.call.label, 'inputs': toast.call.inputs, 'method': toast.call.mutation.method, 'onSuccess': toast.call.onSuccess, 'onFailure': toast.call.onFailure } })
+      expected:
+        tone: success
+        link:
+          to:
+            type: openPage
+            href: { path: { value: "/projects/{id}" }, pathParams: { id: { root: result, path: [id] } }, queryParams: {} }
+            surface: { type: dialog, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+            keepsSurface: true
+          label: { text: View, context: null, lang: en, computed: false }
+        call:
+          label: { text: Undo, context: null, lang: en, computed: false }
+          inputs: { id: { root: result, path: [id] } }
+          method: POST
+          onSuccess:
+            - type: toast
+              text: { text: Restored., context: null, lang: en, computed: false }
+              tone: success
+          # Written nowhere: filled with one danger toast over the error's message.
+          onFailure:
+            - type: toast
+              text:
+                text: { text: "{$message}", context: null, lang: und, computed: false }
+                values: { message: { root: error, path: [message] } }
+              tone: danger
+  - name: failureToast
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        cel.bind(toast, steps.projects.result.node.rowActions[0].onFailure[0],
+          { 'tone': toast.tone, 'call': { 'inputs': toast.call.inputs, 'onSuccess': toast.call.onSuccess.map(e, e.tone), 'onFailure': toast.call.onFailure } })
+      expected:
+        tone: warning
+        call:
+          inputs: { id: { root: input, path: [id] } }
+          onSuccess: [success]
+          onFailure: [{ type: close }]
+  - name: formLists
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        {
+          'create': { 'onSuccess': steps.create.result.node.onSuccess.map(e, e.type == 'toast' ? e.tone : e.type), 'onFailure': steps.create.result.node.onFailure },
+          'rename': { 'onSuccess': steps.rename.result.node.onSuccess.map(e, e.tone), 'onFailure': steps.rename.result.node.onFailure }
+        }
+      expected:
+        create:
+          onSuccess: [navigate, info]
+          onFailure:
+            - type: toast
+              text:
+                text: { text: "Could not create {$name}: {$message}", context: null, lang: en, computed: false }
+                values: { name: { root: values, path: [name] }, message: { root: error, path: [message] } }
+              tone: danger
+        rename: { onSuccess: [success], onFailure: [] }

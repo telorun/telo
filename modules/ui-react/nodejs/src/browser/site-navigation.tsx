@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import { useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactElement, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { NavigationEntry } from "../contract/ui-react-controls.js";
 import { leadsHere, useViewer, type Viewer } from "./current-location.js";
@@ -332,6 +332,23 @@ export function NavigationColumnNode({ node }: { node: NavigationColumnNodeSpec 
   );
 }
 
+/** The tab bar's height as `--ui-react-tab-bar-height` on the document, so what sits at the bottom edge outside the page — the toaster — stays above it. */
+function useTabBarHeight(bar: RefObject<HTMLDivElement | null>, drawn: boolean) {
+  useEffect(() => {
+    const element = bar.current;
+    if (!drawn || !element) return;
+    const style = document.documentElement.style;
+    const measure = () => style.setProperty("--ui-react-tab-bar-height", `${element.offsetHeight}px`);
+    measure();
+    const watch = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(measure);
+    watch?.observe(element);
+    return () => {
+      watch?.disconnect();
+      style.removeProperty("--ui-react-tab-bar-height");
+    };
+  }, [drawn]);
+}
+
 /**
  * The top-level entries as tabs along the application's bottom edge, at most `visible` of
  * them: with more, the last tab is More, holding the rest. A group's tab, and
@@ -346,6 +363,7 @@ function TabBar({ placement, tree, children }: { placement: TabBarPlacement; tre
   const bar = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState<string[]>([]);
   const sheet = useOpened(placement.surface);
+  useTabBarHeight(bar, bottom !== null);
   const top = tree.drawn.entries;
   const hidden = top.length > placement.visible ? top.slice(placement.visible - 1) : [];
   const shown: NavigationEntry[] =

@@ -63,7 +63,7 @@ describe("a theme implementing every control", () => {
       // What the scenes draw before anything is done on them: a page open at its address, no question asked yet.
       [
         "Checkbox", "Combobox", "DateInput", "DateRangeInput", "Dialog", "Drawer", "Icon", "Menu", "MultiSelect", "Navigation", "NumberInput", "OptionGroup",
-        "Select", "Slider", "Switch", "Tabs", "TagsInput", "TextArea", "TextInput", "Tooltip",
+        "Select", "Slider", "Switch", "Tabs", "TagsInput", "TextArea", "TextInput", "Toaster", "Tooltip",
       ].sort(),
     );
   });

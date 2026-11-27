@@ -35,6 +35,7 @@ messages:
   siteNavigation: Website
   collapseNavigation: Navigation einklappen
   expandNavigation: Navigation ausklappen
+  toaster: Benachrichtigungen
   search: "{$label} durchsuchen"
   remove: "{$label} entfernen"
   clear: "{$label} leeren"

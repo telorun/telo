@@ -1,0 +1,5 @@
+units:
+  apps/hub: Added
+body: "The build-ui authoring guide covers toasts: posting one from a write's onSuccess
+  or onFailure list with a View link and an Undo call, Ui.Close, and why a toast must
+  never be the only way to act on an outcome."

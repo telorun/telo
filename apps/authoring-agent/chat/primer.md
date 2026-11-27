@@ -5115,8 +5115,8 @@ Where to start:
     `pinned` has no effect under it. The renderer draws it with the `Combobox`
     layer control: a controls set implementing any layer control (`Select`,
     `MultiSelect`, `Combobox`, `Dialog`, `Drawer`, `Popover`, `Confirmation`,
-    `Menu`, `Tooltip`, `Navigation`) implements all ten, built for the
-    `ui_react_controls-4` generation.
+    `Menu`, `Tooltip`, `Toaster`, `Navigation`) implements all eleven, built for
+    the `ui_react_controls-5` generation.
   - A page `path` may hold variables: a segment `{id}` (`/reviews/{id}`)
     matches one percent-decoded segment, a literal segment winning over it, and
     the page's nodes, readers, views and sources read it as `params.id` (a
@@ -5142,15 +5142,29 @@ Where to start:
     and a preset's value may be relative, `{ unit, offset }` (the address keeps
     `now-1day`; `eq`, `gt`, `gte`, `lt`, `lte`). A write is run by a CALL, a closed
     shape per holder: `Ui.MutationCall` is `{ mutation, inputs, label,
-    confirm?, prompt?, enabled?, onSuccess?, result?, failure? }` — the entry of
+    confirm?, prompt?, enabled?, onSuccess?, onFailure?, result?, failure? }` — the entry of
     `rowActions` and `annotations.action`, and the `action` of a `button` node
     (`{ type: button, action, button? }`; `inputs: {}` for a mutation that takes
     nothing); `mutation` a `!ref` or one inline, `inputs` reading `row`, `params`,
     `query`, `data` and `prompt`, every required input bound; `label` the
     button's accessible name; `result` and `failure` node trees drawn where it
     ran, over `result` / `error` and `input`. `onSuccess` is a list of effects
-    run in order (`{ kind: Ui.Navigate, … }`, `{ kind: Ui.OpenPage, … }`), an
-    old `{ to }` being refused. `prompt` is a `Ui.Prompt` `{ model, fields?,
+    run in order (`{ kind: Ui.Navigate, … }`, `{ kind: Ui.OpenPage, … }`, `{ kind: Ui.Close }`, `{ kind: Ui.Toast, … }`), an
+    old `{ to }` being refused. `onFailure` stands beside every `onSuccess` (a
+    call, a `Ui.Move`, a form, a listing's `delete: { onSuccess?, onFailure? }`)
+    and runs when the write does not succeed. A `Ui.Toast` is an effect that
+    posts a notice: `{ text, tone?, link?, call? }`, `text` a bound text, `tone`
+    `info | success | warning | danger` (filled `success` in an `onSuccess` list,
+    `danger` in an `onFailure` list), `link` a `{ to, label }` press, `call` a
+    `Ui.MutationPress` (`label` required, no `result`, `confirm`, `prompt` or
+    `enabled`; a call's omitted `onFailure` posts one `danger` toast with the
+    error's message). `Ui.Close` closes the surface the call ran in and is never
+    a `to`. A toast reports an event; it is never the only record of an outcome
+    nor the only way to act on one, so write the Undo's twin where the record
+    lives. Toasts may be dropped: at most three show, an `info` or `success`
+    toast with no `link` or `call` leaves after 6 seconds, the rest stay until
+    dismissed. `UiReact.App.toaster: { side, align }` places the region (default
+    `bottom`, `end`). `prompt` is a `Ui.Prompt` `{ model, fields?,
     groups? }`, a dialog asking for entries first that `inputs` reads as
     `prompt.<name>` (`prompt: true` is refused). A `Ui.Form` is a record editor (`record`), a
     mutation form (`onSubmit: { mutation, inputs, label?, confirm?, enabled?,
@@ -5160,7 +5174,7 @@ Where to start:
     refused, as are `onSuccess` and `afterSubmit` without `record` or `onSubmit`.
     The form's `onSuccess` effects run after `afterSubmit`, over `values` and
     `result` (the answer, or the stored record the collection's `POST` answered
-    with), so a create page goes to `result.id`. An `autosave` must replace (a
+    with), so a create page goes to `result.id`. The form's `onFailure` effects run when its submit write was sent and did not succeed, over `values` and `error`. An `autosave` must replace (a
     `PUT`, or a `PATCH` of the whole record; a `POST` is refused), is sent when
     the record is valid and differs from the last acknowledged, coalesces edits
     behind a write in flight and draws a retry button on failure; `clearAnswerOn:

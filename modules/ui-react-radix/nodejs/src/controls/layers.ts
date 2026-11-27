@@ -73,9 +73,37 @@ export function leaveClosing(content: HTMLElement | null): void {
 
 const TABBABLE = "button, [href], input, select, textarea, [tabindex]";
 
-/** The first element inside `container` the Tab key reaches. */
-export function firstTabbable(container: Element): HTMLElement | undefined {
-  return [...container.querySelectorAll<HTMLElement>(TABBABLE)].find(
+/** The elements inside `container` the Tab key reaches, in order. */
+export function tabbables(container: Element): HTMLElement[] {
+  return [...container.querySelectorAll<HTMLElement>(TABBABLE)].filter(
     (element) => element.tabIndex >= 0 && !element.matches(":disabled") && !element.closest("[hidden], [inert]"),
   );
+}
+
+/** The first element inside `container` the Tab key reaches. */
+export function firstTabbable(container: Element): HTMLElement | undefined {
+  return tabbables(container)[0];
+}
+
+/** The toaster drawn on the page: a layer outside the stack the primitives keep. */
+let toaster: Element | null = null;
+
+/** Hold the toaster's root while it is drawn; what is returned lets it go. */
+export function holdToaster(root: Element): () => void {
+  toaster = root;
+  return () => {
+    if (toaster === root) toaster = null;
+  };
+}
+
+/**
+ * Keep a layer from taking a key, a press or the focus inside the toaster for
+ * its own: the event is cancelled for the primitive, which then neither
+ * dismisses the layer nor counts the event as outside it. Answers whether it
+ * was inside.
+ */
+export function vetoInToaster(event: Event): boolean {
+  if (!toaster || !(event.target instanceof Node) || !toaster.contains(event.target)) return false;
+  event.preventDefault();
+  return true;
 }

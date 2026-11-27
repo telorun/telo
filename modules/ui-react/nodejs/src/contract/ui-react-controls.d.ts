@@ -1,6 +1,6 @@
 import type { ComponentType, ReactElement, ReactNode } from "react";
 
-/** Why a list, a menu, a tooltip or an overlay would close. */
+/** Why a list, a menu, a tooltip or an overlay would close, or a toast is dismissed. */
 export type CloseReason = "escape" | "outside" | "close";
 
 /** One option: a key the renderer issues, and the finished text shown for it. */
@@ -362,6 +362,34 @@ export interface TooltipProps {
   children: ReactElement;
 }
 
+/** How a toast is announced: `danger` assertively, the others politely. */
+export type ToastTone = "info" | "success" | "warning" | "danger";
+
+/** One toast the toaster shows. */
+export interface ToastItem {
+  /** Issued by the renderer, unique among the items. */
+  key: string;
+  tone: ToastTone;
+  /** The renderer's text and buttons: its `toast-text` and `toast-actions`. */
+  children: ReactNode;
+}
+
+export interface ToasterProps {
+  /** The toasts shown, oldest first; empty while none is up. */
+  items: ToastItem[];
+  /** The edge it sits at, and where along it. */
+  side: "top" | "bottom";
+  align: "start" | "center" | "end";
+  /** The region's accessible name. */
+  label: string;
+  /** The accessible name of every toast's dismiss button. */
+  dismissLabel: string;
+  /** A toast is dismissed: `escape`, or `close` for its dismiss button and a swipe. */
+  onDismiss(key: string, reason: CloseReason): void;
+  /** True while the pointer is over the toaster or the focus is inside it. */
+  onPauseChange(paused: boolean): void;
+}
+
 /** The semantic names of the glyphs the renderer draws. */
 export type IconName =
   | "add"
@@ -398,7 +426,7 @@ export interface IconProps {
   name: IconName;
 }
 
-/** The control set of `ui_react_controls-4`: a module implementing any of them
+/** The control set of `ui_react_controls-5`: a module implementing any of them
  *  exports each under its name. */
 export interface Controls {
   TextInput: ComponentType<TextInputProps>;
@@ -423,6 +451,7 @@ export interface Controls {
   Confirmation: ComponentType<ConfirmationProps>;
   Menu: ComponentType<MenuProps>;
   Tooltip: ComponentType<TooltipProps>;
+  Toaster: ComponentType<ToasterProps>;
   Navigation: ComponentType<NavigationProps>;
   Tabs: ComponentType<TabsProps>;
   Icon: ComponentType<IconProps>;

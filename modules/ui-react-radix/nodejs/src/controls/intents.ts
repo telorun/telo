@@ -1,6 +1,6 @@
 import { cloneElement, useLayoutEffect, useRef, type ReactElement, type RefObject } from "react";
 import type { CloseReason } from "../../../../ui-react/nodejs/src/contract/ui-react-controls.js";
-import { inLaterLayer } from "./layers.js";
+import { inLaterLayer, vetoInToaster } from "./layers.js";
 
 /** The renderer's own element, given to be a trigger: it keeps no state of the
  *  primitive's, which is the control's to carry on its own parts. */
@@ -12,16 +12,17 @@ export const atEnd = (element: HTMLElement) => element.scrollTop + element.clien
 /**
  * The reason the next close is reported with, set by whatever is about to
  * close the layer `content` is drawn in. A press or the focus inside a layer
- * drawn after it closes nothing.
+ * drawn after it, and a key, a press or the focus inside the toaster, closes
+ * nothing.
  */
 export function useCloseReason(onOpenChange: (open: boolean, reason?: CloseReason) => void, content: RefObject<HTMLElement | null>) {
   const reason = useRef<CloseReason>("close");
   return {
-    escape: () => {
-      reason.current = "escape";
+    escape: (event: Event) => {
+      if (!vetoInToaster(event)) reason.current = "escape";
     },
     outside: (event: Event) => {
-      if (inLaterLayer(content.current, event.target)) event.preventDefault();
+      if (vetoInToaster(event) || inLaterLayer(content.current, event.target)) event.preventDefault();
       else if (!event.defaultPrevented) reason.current = "outside";
     },
     change: (open: boolean) => {

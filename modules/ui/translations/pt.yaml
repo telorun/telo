@@ -35,6 +35,7 @@ messages:
   siteNavigation: Site
   collapseNavigation: Recolher navegação
   expandNavigation: Expandir navegação
+  toaster: Notificações
   search: Pesquisar {$label}
   remove: Remover {$label}
   clear: Limpar {$label}

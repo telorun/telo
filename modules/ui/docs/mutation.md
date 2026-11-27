@@ -104,6 +104,7 @@ and a [`list` node](nodes.md#values-and-lists), of a markdown node's
 | `prompt` | none | a [`Ui.Prompt`](#asking-first): a dialog asking for entries before the write runs |
 | `enabled` | always | when the button can be pressed, and why not: a [`Ui.Enablement`](conditions.md#enablement) over the roots in scope |
 | `onSuccess` | none | [effects](#after-a-success) run in order once the write succeeds |
+| `onFailure` | none | [effects](#after-a-success) run in order when the write does not succeed, over `error` and `input` |
 | `result` | nothing drawn | a [node tree](nodes.md) drawn of a success, over `result` and `input` |
 | `failure` | the error's code and message | a node tree drawn when the write does not succeed, over `error` and `input` |
 
@@ -145,7 +146,7 @@ drawn from. The trees sit in the `mutation-result` and `mutation-failure`
 A layout's [`move`](listing-layouts.md#moving-a-record) is a gesture with no
 button, so its shape is a call without a `label` — the "Move to" menu names the
 target — and without a `result`, since the success is the record in its new
-place: `{ mutation, inputs, confirm?, prompt?, enabled?, onSuccess?, failure? }`.
+place: `{ mutation, inputs, confirm?, prompt?, enabled?, onSuccess?, onFailure?, failure? }`.
 Its `failure` is drawn on the record.
 
 ### On a form
@@ -198,6 +199,16 @@ The field rules are the prompt's, as they are a form's:
 `UI_FIELD_REQUIRED_NOT_ENTERED`, `UI_FIELD_UNSUPPORTED` and the rest of
 [the form's field rules](form.md#refused) are reported at the `Ui.Prompt`.
 
+### `Ui.MutationPress`
+
+A call is one shape over a smaller one. `Ui.MutationPress` is a mutation run by
+a press and the effects that follow its answer: `{ mutation, inputs, label?,
+onSuccess?, onFailure? }`. `Ui.MutationCall` extends it — `label` required —
+adding `confirm`, `prompt`, `enabled`, `result` and `failure`, the parts that
+ask first and draw an answer in place. A [toast's `call`](toasts.md#uitoast)
+holds the smaller shape, `label` required: a `result:` there is
+`SCHEMA_VIOLATION`.
+
 ## After a success
 
 `onSuccess` is a list of [`Ui.Effect`](presses.md)s written in place, run in the
@@ -225,6 +236,13 @@ What follows a success depends on where the write was made, so it belongs to the
 call and not to the mutation: one mutation saves and stays from an autosave,
 saves and navigates from a submit, and saves silently from a row.
 
+`onFailure` is the same list for a write that does not succeed — any answer but
+a 2xx, no answer at all, or a 2xx body the output model refuses — over `error`
+and `input`, run after the call's `failure` tree is drawn. `result` is not in
+scope there, nor `error` in `onSuccess`: reading either is
+`CEL_UNKNOWN_IDENTIFIER`. Besides destinations an effect is a
+[`Ui.Toast`](toasts.md#uitoast) or a [`Ui.Close`](toasts.md#uiclose).
+
 ## The answer
 
 `result` and `failure` are ordinary [node trees](nodes.md) whose
@@ -234,8 +252,8 @@ typed as declared:
 | Root | In | Is |
 | --- | --- | --- |
 | `result` | `result`, `onSuccess` | the answer, typed from `outputModel`; with none it has no members, so any `result.<name>` is `CEL_UNKNOWN_FIELD` |
-| `error` | `failure` | a [`Ui.RequestError`](conditions.md): `status` (absent when nothing answered), `code`, `message` |
-| `input` | `result`, `failure`, `onSuccess`, and the mutation's `url` and `invalidates` | the record that was sent, typed from `inputModel` |
+| `error` | `failure`, `onFailure` | a [`Ui.RequestError`](conditions.md): `status` (absent when nothing answered), `code`, `message` |
+| `input` | `result`, `failure`, `onSuccess`, `onFailure`, and the mutation's `url` and `invalidates` | the record that was sent, typed from `inputModel` |
 | `values` | a form's `result` and `failure` | what the form holds now, typed from the form's `model` |
 
 `failure` is drawn for every answer but a 2xx — a 400 still marks the fields it
@@ -302,8 +320,8 @@ A mutation is a `Ui.MutationSpec`:
 | `concurrency` | `parallel` or `serial` |
 
 A call is `{ mutation, inputs, label, confirm?, prompt, enabled?, onSuccess,
-result?, failure }`: `inputs` bindings, `prompt` a prompt spec `{ schema, fields,
+onFailure, result?, failure }`: `inputs` bindings, `prompt` a prompt spec `{ schema, fields,
 groups }` or `null`, `onSuccess` a list of effect specs (`[]` when none) over
-`result` and `input`, `result` present when written, `failure` the tree with the
+`result` and `input`, `onFailure` the same over `error` and `input`, `result` present when written, `failure` the tree with the
 default filled in. A move is the same without `label` and `result`. A form's
 `onSubmit` and `autosave` are described with [the form](form.md#what-a-renderer-receives).

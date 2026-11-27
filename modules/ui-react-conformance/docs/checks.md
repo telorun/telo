@@ -74,14 +74,18 @@ as `CheckControls` checks it.
 
 The scenes are what catch controls that work alone and fail together. Every
 layer on a page comes from one implementation — a set implementing any of the
-ten [layer controls](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/) implements
+eleven [layer controls](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/) implements
 all of them, which `ui-react` refuses otherwise (`UI_CONTROLS_LAYERS_PARTIAL`)
 — so what the scenes hold is how that one stack composes: a list opened in a
 dialog, a drawer or a popover, the confirmation over a dialog or a drawer, the
 menu in a filter overlay, a tooltip over a surface or over a menu node's
 navigation panel, Escape closing only the top layer, and a press outside
 reaching the layers beneath the top one as far as the first shielding layer
-([composition within the stack](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/)).
+([composition within the stack](https://hub.telo.run/module/oci/ghcr.io/telorun/ui-react/)) —
+and how the toaster stays out of it: Escape in a modal dialog closing the
+dialog and leaving the toast, F8 reaching the toaster from inside the dialog,
+Escape there dismissing only the focused toast and giving the focus back to
+the dialog, and the toaster neither `inert` nor `aria-hidden` under it.
 
 ## CheckControls
 
@@ -128,7 +132,7 @@ the built entries it loads in a directory of its own, removed when it is done:
 - the renderer, beside generated packages supplying `react`,
   `react/jsx-runtime`, `react-dom` and `react-dom/client`;
 - each set's entry, beside generated packages supplying exactly what
-  `ui_react_controls-4` supplies — `react`, `react/jsx-runtime`, `react-dom` —
+  `ui_react_controls-5` supplies — `react`, `react/jsx-runtime`, `react-dom` —
   so an entry reaching anything else, `@telorun/ui-react` included, does not
   load.
 

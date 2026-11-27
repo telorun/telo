@@ -140,6 +140,7 @@ receive the messages of every served language.
 | `siteNavigation` | Site |
 | `collapseNavigation` | Collapse navigation |
 | `expandNavigation` | Expand navigation |
+| `toaster` | Notifications — names the region holding the toasts |
 | `search` | Search {$label} |
 | `remove` | Remove {$label} |
 | `clear` | Clear {$label} |

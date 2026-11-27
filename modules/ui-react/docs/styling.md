@@ -11,13 +11,13 @@ reserved property below, and
 [`CheckTheme`](theme.md#checking-a-theme) reports each part the release added
 as `part-unstyled`.
 
-Every text box, choice, list, overlay, menu, navigation, tooltip and glyph is
+Every text box, choice, list, overlay, menu, navigation, tooltip, toast and glyph is
 drawn by a control — the built-in one, or a theme's that replaces it — under the
 [controls contract](controls-abi.md), which lists the parts and states each
 control draws. The built-ins are drawn on the DOM itself, each in its role's
 WAI-ARIA pattern, with Lucide's icons; the renderer carries no primitive
 library. A dialog, a drawer, a popover, a confirmation, a choice list, a menu,
-a navigation panel of a row or a rail and a tooltip are drawn at the end of `<body>`, outside the
+a navigation panel of a row or a rail, a tooltip and the toaster are drawn at the end of `<body>`, outside the
 `app` part, each in a layer whose root carries `data-telo-layer`, so select
 them by their own part and never as a descendant of `app`, `listing`, `form`,
 `filters` or `navigation`. A
@@ -906,6 +906,17 @@ The full-screen viewer a picture opens, drawn in a `dialog` surface (`data-surfa
 | `menu-item` | one entry of it |
 | `tooltip` | the name of an icon-only button, shown on hover and focus |
 
+### Toaster
+
+| Part | Is |
+| --- | --- |
+| `toaster` | the application's one region of notifications, a layer at the end of `<body>` named by the `toaster` text, at the edge its `data-side` and `data-align` say; below the breakpoint it spans the width at its edge, above a tab bar |
+| `toast` | one notification, oldest first: `data-tone` is `info`, `success`, `warning` or `danger`, `data-state` `open`; it holds the `toast-text`, the `toast-actions` where it offers any, and its dismiss button, whose glyph is an `icon` |
+| `toast-text` | what the toast says, one sentence |
+| `toast-actions` | its link (a `link`) and its button (a `button`), where it has them |
+
+The renderer owns when a toast comes and goes — its 6 second timer (paused while the toaster reports a pause or the document is hidden), the limit of three and the dropping of an equal one — so a stylesheet styles only what is shown.
+
 ### Status
 
 | Part | Is |
@@ -928,7 +939,7 @@ listed.
 | `data-dirty="…"` | `true`, while it holds input that is not saved | `form` |
 | `data-compact="…"` | `true`, while the viewport is below the application's `compactBelow` | `app` |
 | `data-surface="…"` | `dialog`, `drawer`, `popover`, `inline`, `panel`, `confirmation` | `surface` |
-| `data-side="…"` | `start`, `end`, `top`, `bottom`: the edge a drawer or a panel sits at, the side of its control a popover opens on; `start` or `end` for the side of its content a filter bar's controls sit at, under `data-placement="aside"` only; `start` or `end` for the side of the page a layout's aside sits at, on `app` while it stands beside `main`; `start` or `end` for the side of its content a split view's aside sits at, and the side an aside is drawn at | `app`, `surface`, `filters`, `aside`, `split` |
+| `data-side="…"` | `start`, `end`, `top`, `bottom`: the edge a drawer or a panel sits at, the side of its control a popover opens on; `start` or `end` for the side of its content a filter bar's controls sit at, under `data-placement="aside"` only; `start` or `end` for the side of the page a layout's aside sits at, on `app` while it stands beside `main`; `start` or `end` for the side of its content a split view's aside sits at, and the side an aside is drawn at; `top` or `bottom` for the edge the toaster sits at | `app`, `surface`, `filters`, `aside`, `split`, `toaster` |
 | `data-placement="…"` | `above`, `aside`, `collapsible`, `overlay`: where the bar's controls sit now — its compact placement's below the application's `compactBelow` | `filters` |
 | `data-active="…"` | `true`, while one of its filters holds a value | `filter`, `filter-chip` |
 | `data-pending="…"` | `true`, while what was entered in a control is not yet applied: typed text not committed, a pause under `apply: typing`, a control changed before Apply under `apply: button` | `filters` |
@@ -941,7 +952,7 @@ listed.
 | `data-fill="…"` | `true`, while the part [fills](#filling) the room it is in | `app`, `main`, `page`, `box`, `stack`, `columns`, `text`, `badge`, `link`, `image`, `svg`, `value`, `time`, `list`, `bar`, `command`, `button`, `query`, `listing`, `form`, `filters`, `component`, `chat`, `split`, `aside`, `split-content`, `markdown`, `navigation`, `tabs`, `tab-panel` |
 | `data-record="…"` | `true`: a link drawn from a record's own content — a layout's content, a column's or value's `to` — and never from a relation's label, a call's answer or a form; absent otherwise | `link` |
 | `data-selected="…"` | `true`, while a link or press the record draws leads to where the viewer is — moving to the current location, with the same address and query, or opening the page open in a surface now — and never by a relation's label; absent otherwise | `table-row`, `list-item`, `card`, `board-card`, `calendar-event`, `timeline-bar`, `tree-item` |
-| `data-align="…"` | `start`, `center`, `end` — a popover's, along its side; a table column's alignment | `surface`, `markdown-table-header-cell`, `markdown-table-cell` |
+| `data-align="…"` | `start`, `center`, `end` — a popover's, along its side; a table column's alignment; where along its edge the toaster sits | `surface`, `markdown-table-header-cell`, `markdown-table-cell`, `toaster` |
 | `data-modal="…"` | `true`, `false` — a dialog's or a drawer's | `surface` |
 | `data-sorted="…"` | `asc`, `desc` | `table-header-cell`, `listing-sort-option` |
 | `data-width="…"` | `contained`, `full`: on `page`, how wide the page's content is drawn, as its page document says — the page's own `width`, else the application's `pageWidth` — the last page's while the next loads, absent on a path no page declares; on `header` and `footer`, how wide its content is drawn — the layout's `width`, else the application's `pageWidth` — the same on every page | `header`, `footer`, `page` |

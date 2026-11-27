@@ -12,6 +12,7 @@ opened from a [press](presses.md) it is drawn in the press's
 | `onSubmit` | | the [write run when the form is submitted](#onsubmit); excludes `record` |
 | `autosave` | | the [write sent as the values settle](#autosave); excludes `record` |
 | `onSuccess` | none | [effects](#onsuccess) run after the submit write succeeds; needs `record` or `onSubmit` |
+| `onFailure` | none | [effects](#onfailure) run after the submit write does not succeed; needs `record` or `onSubmit` |
 | `clearAnswerOn` | none | [properties whose change clears](#clearansweron) what the writes drew of their last answers |
 | `initialValues` | the address and store, then the model's defaults | the record the form [starts from](#what-it-starts-from): a plain chain over the roots where the form is placed |
 | `unsaved` | `confirm` | [whether leaving with unsaved input asks first](#the-form-owns-its-lifecycle): `confirm` or `discard` |
@@ -287,6 +288,25 @@ save, so a query reading the saved record reads again — and keeps the form and
 what was typed since (the [form starts again](#what-it-starts-from) only when
 the address it reads changes).
 
+## `onFailure`
+
+`onFailure` is a list of [effects](mutation.md#after-a-success) run when the
+form's submit write does not succeed, over `values` (typed from `model`) and
+`error` (a [`Ui.RequestError`](conditions.md)). It follows the write's `failure`
+tree, which stays drawn: a toast there adds to it, never replaces it.
+
+```yaml
+onFailure:
+  - kind: Ui.Toast
+    text: { text: "Could not create {$name}: {$message}", values: { name: !cel "values.name", message: !cel "error.message" } }
+```
+
+`result` is not in scope: `result.name` there is `CEL_UNKNOWN_IDENTIFIER`. It
+runs only when a submit write was sent and did not succeed, so an `autosave`
+failure runs none. Like `onSuccess` it needs `record` or `onSubmit` — under
+`onSubmit` or `record` themselves it is `SCHEMA_VIOLATION`. The effects are
+[toasts](toasts.md) and the other effect kinds.
+
 ## `autosave`
 
 `autosave` saves the record as it is edited:
@@ -526,7 +546,8 @@ A `form` node carries its `id` (the declaration's identity, under which the
 settled record of every placement is kept), `schema`, `record` (`{ basePath,
 key, answer }` — `answer` the collection's model the stored record is held to —
 or `null`), `initialValues`, `unsaved`, `afterSubmit`, `fields`, `groups`,
-`state`, `onSuccess` (effect specs, `[]` when none) and `clearAnswerOn`. Its
+`state`, `onSuccess` and `onFailure` (effect specs, `[]` when none) and
+`clearAnswerOn`. Its
 `onSubmit` is `{ mutation, inputs, label, confirm?, enabled?, result?, failure }`
 and its `autosave` `{ mutation, inputs, debounce, result?, failure }`, each
 `null` when absent, `debounce` in integer milliseconds (`300` by default,

@@ -34,6 +34,7 @@ export function HostProbe({ basePath }: { basePath: string }) {
   const [flushed, setFlushed] = useState("");
   const [text, setText] = useState("");
   const measured = useRef<HTMLSpanElement>(null);
+  const posted = useRef<{ dismiss(): void }>(undefined);
 
   useEffect(() => {
     if (!listening) return;
@@ -71,6 +72,8 @@ export function HostProbe({ basePath }: { basePath: string }) {
       <span data-fixture="location">{host.location.path + host.location.search + host.location.hash}</span>
       <span data-fixture="keys">{Object.keys(host).join(",")}</span>
       <span data-fixture="href">{host.href("/done?x=1")}</span>
+      <button type="button" data-fixture="toast" onClick={() => (posted.current = host.toast({ text: "Saved", link: { label: "Open", to: "/drafts/7" } }))}>toast</button>
+      <button type="button" data-fixture="dismiss" onClick={() => posted.current?.dismiss()}>dismiss</button>
       <button type="button" data-fixture="query" onClick={() => host.navigate("?c=2")}>query</button>
       <button type="button" data-fixture="page" onClick={() => host.navigate("/done")}>page</button>
       <button type="button" data-fixture="nowhere" onClick={() => host.navigate("/nowhere")}>nowhere</button>

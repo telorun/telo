@@ -397,6 +397,7 @@ steps:
                       label: { text: Archive, context: null, lang: und, computed: false }
                       prompt: null
                       onSuccess: [{ type: navigate, href: { path: { value: /files }, pathParams: {}, queryParams: {} } }]
+                      onFailure: []
                       failure:
                         type: stack
                         fill: false
@@ -424,6 +425,7 @@ steps:
           autosave: null
           onSuccess:
             - { type: navigate, href: { path: { root: result, path: [location] }, pathParams: {}, queryParams: {} } }
+          onFailure: []
           clearAnswerOn: [month, formats]
         chosen:
           - { type: input, property: formats, label: { text: Formats, context: null, lang: und, computed: false }, control: auto, description: null, labels: [{ value: pdf, label: { text: pdf, context: null, lang: und, computed: false } }, { value: csv, label: { text: csv, context: null, lang: und, computed: false } }] }

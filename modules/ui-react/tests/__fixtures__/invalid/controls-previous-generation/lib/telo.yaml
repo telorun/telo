@@ -5,7 +5,7 @@ metadata:
   version: 1.0.0
   description: >-
     Test fixture exporting a control set whose entry is written against
-    ui_react_controls-3.
+    ui_react_controls-4.
 imports: { UiReact: ../../../../../ }
 exports:
   resources: [previousControls]
@@ -13,7 +13,7 @@ exports:
     - specifier: "@fixture/previous-controls"
       path: ./browser/previous-controls.js
       source: ./previous-controls.js
-      abi: ui_react_controls-3
+      abi: ui_react_controls-4
       external: [react, react/jsx-runtime, react-dom]
       exports: [Checkbox]
 ---

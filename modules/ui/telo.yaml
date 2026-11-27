@@ -27,8 +27,8 @@ lang: en
 # The conformance rows a renderer's tests read: the interpreted profile's,
 # which control fits which property, what a listing's read plan requests, and how
 # text typed into a search box becomes filter values, and what a query's body
-# template resolves to.
-files: [conformance/match.json, conformance/control-fits.json, conformance/listing-reads.json, conformance/addresses.json, conformance/current-location.json, conformance/invalidations.json, conformance/filter-tokens.json, conformance/template-bindings.json, conformance/merge-patch.json, conformance/form-writes.json]
+# template resolves to, how entered values settle and autosave sends, and what a toaster's board shows.
+files: [conformance/match.json, conformance/control-fits.json, conformance/listing-reads.json, conformance/addresses.json, conformance/current-location.json, conformance/invalidations.json, conformance/filter-tokens.json, conformance/template-bindings.json, conformance/merge-patch.json, conformance/form-writes.json, conformance/toasts.json]
 # ui's own texts translated, one `Self.Translations` per language.
 include: [./translations/de.yaml, ./translations/es.yaml, ./translations/fr.yaml, ./translations/hi.yaml, ./translations/it.yaml, ./translations/ja.yaml, ./translations/ko.yaml, ./translations/nl.yaml, ./translations/pl.yaml, ./translations/pt.yaml, ./translations/ru.yaml, ./translations/tr.yaml, ./translations/uk.yaml, ./translations/zh.yaml]
 imports: { Font: ../font, DataModel: ../data-model, Conversation: ../conversation }
@@ -60,8 +60,8 @@ migrations:
           /failure: /content/failure/0
         set: { kind: Self.View, content: { type: query, query: { kind: Self.Query } } }
 exports:
-  kinds: [Translations, Composite, Surface, Overlay, ViewportOverlay, Dialog, Drawer, Popover, InlineSurface, Panel, Effect, Destination, Navigate, OpenPage, FilterPlacement, FoldingFilterPlacement, AbovePlacement, AsidePlacement, CollapsiblePlacement, OverlayPlacement, SearchBoxPlacement, StateStore, LocalStore, SessionStore, NavigationPlacement, CompactNavigationPlacement, HeaderNavigation, OverlayNavigation, TabBarNavigation, Icon, FileIcon, ButtonDisplay, TextButton, IconButton, Page, PageLayout, Pane, NavigationPane, Navbar, NavigationColumn, View, CollectionSource, ConversationSource, CollectionPresentation, Chat, SplitView, Listing, ListingLayout, TableLayout, ListLayout, CardLayout, BoardLayout, CalendarLayout, TimelineLayout, TreeLayout, ComponentLayout, Form, Prompt, Filters, Component, ComponentExport, DesignTokens, Query, Mutation, Field, InputField, ChoiceField, PickerField, DateRangeField, OptionSource, CollectionOptions]
-  resources: [chineseTranslations, dutchTranslations, frenchTranslations, germanTranslations, hindiTranslations, italianTranslations, japaneseTranslations, koreanTranslations, polishTranslations, portugueseTranslations, russianTranslations, spanishTranslations, turkishTranslations, ukrainianTranslations, BoundText, Match, Condition, Enablement, RequestError, AppRelativeReference, QueryParameters, Address, RequestTarget, InvalidationTarget, Control, FieldGroup, StateRecord, FieldAnswer, OptionSourceSpec, Relations, ListingLayoutSpec, ListingLayoutAnswer, controlFits, MutationCall, Move, Command, Press, Grouping, Span, Node, SpecNode, OverlaySpec, SurfaceSpec, DestinationSpec, EffectSpec, PromptSpec, MutationSpec, QuerySpec, PressSpec, ButtonDisplaySpec, AfterSubmit, UnsavedInput, FilterPolicy, FilterDisplay, FilterPlacementSpec, StateStoreSpec, Navigation, NavigationItem, NavigationPlacementSpec, PageWidth, Frame, RowActionsDisplay, Aside, PageRoute]
+  kinds: [Translations, Composite, Surface, Overlay, ViewportOverlay, Dialog, Drawer, Popover, InlineSurface, Panel, Effect, Destination, Navigate, OpenPage, Toast, Close, FilterPlacement, FoldingFilterPlacement, AbovePlacement, AsidePlacement, CollapsiblePlacement, OverlayPlacement, SearchBoxPlacement, StateStore, LocalStore, SessionStore, NavigationPlacement, CompactNavigationPlacement, HeaderNavigation, OverlayNavigation, TabBarNavigation, Icon, FileIcon, ButtonDisplay, TextButton, IconButton, Page, PageLayout, Pane, NavigationPane, Navbar, NavigationColumn, View, CollectionSource, ConversationSource, CollectionPresentation, Chat, SplitView, Listing, ListingLayout, TableLayout, ListLayout, CardLayout, BoardLayout, CalendarLayout, TimelineLayout, TreeLayout, ComponentLayout, Form, Prompt, Filters, Component, ComponentExport, DesignTokens, Query, Mutation, Field, InputField, ChoiceField, PickerField, DateRangeField, OptionSource, CollectionOptions]
+  resources: [chineseTranslations, dutchTranslations, frenchTranslations, germanTranslations, hindiTranslations, italianTranslations, japaneseTranslations, koreanTranslations, polishTranslations, portugueseTranslations, russianTranslations, spanishTranslations, turkishTranslations, ukrainianTranslations, BoundText, Match, Condition, Enablement, RequestError, AppRelativeReference, QueryParameters, Address, RequestTarget, InvalidationTarget, Control, FieldGroup, StateRecord, FieldAnswer, OptionSourceSpec, Relations, ListingLayoutSpec, ListingLayoutAnswer, controlFits, MutationPress, MutationCall, Move, Command, Press, Grouping, Span, Node, SpecNode, OverlaySpec, SurfaceSpec, DestinationSpec, EffectSpec, ToastSpec, ToastDraft, CloseSpec, MutationPressSpec, PromptSpec, MutationSpec, QuerySpec, PressSpec, ButtonDisplaySpec, AfterSubmit, UnsavedInput, FilterPolicy, FilterDisplay, FilterPlacementSpec, StateStoreSpec, Navigation, NavigationItem, NavigationPlacementSpec, PageWidth, Frame, RowActionsDisplay, Aside, PageRoute]
   # The entry point a renderer's controller bundle resolves `@telorun/ui` to:
   # how a built browser entry becomes the files a page loads, so a renderer
   # addresses its own entries exactly as a placed component's are addressed.
@@ -814,6 +814,66 @@ body: !cel >-
       : control == 'tags' ? (operator == null ? listed : operator == 'in')
       : control == 'none' && operator != null)))))))
 ---
+# A mutation run by a press, and the effects run after its answer: the part of
+# a call every holder shares. A button's call, a row's action, a toast's
+# button and a layout's move write it, each adding what it alone means.
+kind: Telo.JsonSchema
+metadata: { name: MutationPress }
+schema:
+  type: object
+  additionalProperties: false
+  required: [mutation, inputs]
+  properties:
+    mutation:
+      title: Mutation
+      description: >-
+        The write run, a mutation declared once or in place. Its url, method,
+        input model and invalidations are used; what follows an answer and what
+        is drawn of it are this call's own.
+      x-telo-ref: { kind: Self.Mutation, use: dependency, inputs: /inputs }
+    inputs:
+      title: Inputs
+      description: >-
+        What the mutation receives, by input property: a path into a root in
+        scope or a fixed value. Every input the mutation requires is bound
+        (`{}` for one that takes nothing). Read when the button is pressed.
+      type: object
+      additionalProperties: { x-telo-eval: accessor }
+    label:
+      title: Label
+      description: >-
+        The button's accessible name, and nothing else names it. Include the
+        text the button shows, so speech input finds it.
+      $ref: "telo:Ui/BoundText"
+    onSuccess:
+      title: On success
+      description: >-
+        Effects run in order once the write succeeds, over `result` (the
+        answer) and `input` (the record sent), each after the one before has
+        happened. One reading `result` makes the success's body read.
+      type: array
+      items: { x-telo-ref: { kind: Self.Effect, use: dependency } }
+      x-telo-context:
+        type: object
+        properties:
+          result: { x-telo-context-eval: accessor, x-telo-context-ref-from: mutation/outputModel, type: object, properties: {}, additionalProperties: false }
+          input: { x-telo-context-eval: accessor, x-telo-context-ref-from: mutation/inputModel }
+          error: { x-telo-context-eval: accessor, x-telo-context-withheld: a success has no error. }
+    onFailure:
+      title: On failure
+      description: >-
+        Effects run in order when the write does not succeed — any answer but
+        a 2xx, no answer at all, or a 2xx body the output model refuses — over
+        `error` and `input`, each after the one before has happened.
+      type: array
+      items: { x-telo-ref: { kind: Self.Effect, use: dependency } }
+      x-telo-context:
+        type: object
+        properties:
+          error: { x-telo-context-eval: accessor, $ref: "telo:Ui/RequestError" }
+          input: { x-telo-context-eval: accessor, x-telo-context-ref-from: mutation/inputModel }
+          result: { x-telo-context-eval: accessor, x-telo-context-withheld: a failure has no result. }
+---
 # A pressed run of a mutation, where it is placed: the write, what it is sent,
 # how the press is asked and allowed, and what is drawn of its answer. Used by
 # a listing's and a list node's rows, a markdown annotation and a `button`
@@ -826,13 +886,7 @@ schema:
   additionalProperties: false
   required: [mutation, inputs, label]
   properties:
-    mutation:
-      title: Mutation
-      description: >-
-        The write run, a mutation declared once or in place. Its url, method,
-        input model and invalidations are used; what follows a success and what
-        is drawn of the answer are this call's own.
-      x-telo-ref: { kind: Self.Mutation, use: dependency, inputs: /inputs }
+    mutation: { $ref: "telo:Ui/MutationPress#/properties/mutation" }
     inputs:
       title: Inputs
       description: >-
@@ -849,12 +903,7 @@ schema:
             x-telo-context-ref-from: prompt/model
             x-telo-context-withheld: the call asks for nothing in `prompt`.
       additionalProperties: { x-telo-eval: accessor }
-    label:
-      title: Label
-      description: >-
-        The button's accessible name, and nothing else names it. Include the
-        text the button shows, so speech input finds it.
-      $ref: "telo:Ui/BoundText"
+    label: { $ref: "telo:Ui/MutationPress#/properties/label" }
     confirm:
       title: Confirm
       description: A question asked before the write runs. Omitted, a press runs it at once, unless `prompt` opens a dialog.
@@ -875,19 +924,8 @@ schema:
         When the button can be pressed, over the roots in scope, and the reason
         shown while it cannot. Omitted, it always can.
       $ref: "telo:Ui/Enablement"
-    onSuccess:
-      title: On success
-      description: >-
-        Effects run in order once the write succeeds, over `result` (the
-        answer) and `input` (the record sent), each after the one before has
-        happened. One reading `result` makes the success's body read.
-      type: array
-      items: { x-telo-ref: { kind: Self.Effect, use: dependency } }
-      x-telo-context:
-        type: object
-        properties:
-          result: { x-telo-context-eval: accessor, x-telo-context-ref-from: mutation/outputModel, type: object, properties: {}, additionalProperties: false }
-          input: { x-telo-context-eval: accessor, x-telo-context-ref-from: mutation/inputModel }
+    onSuccess: { $ref: "telo:Ui/MutationPress#/properties/onSuccess" }
+    onFailure: { $ref: "telo:Ui/MutationPress#/properties/onFailure" }
     result:
       title: Result
       description: >-
@@ -930,12 +968,13 @@ schema:
   additionalProperties: false
   required: [mutation, inputs]
   properties:
-    mutation: { $ref: "telo:Ui/MutationCall#/properties/mutation" }
+    mutation: { $ref: "telo:Ui/MutationPress#/properties/mutation" }
     inputs: { $ref: "telo:Ui/MutationCall#/properties/inputs" }
     confirm: { $ref: "telo:Ui/MutationCall#/properties/confirm" }
     prompt: { $ref: "telo:Ui/MutationCall#/properties/prompt" }
     enabled: { $ref: "telo:Ui/MutationCall#/properties/enabled" }
-    onSuccess: { $ref: "telo:Ui/MutationCall#/properties/onSuccess" }
+    onSuccess: { $ref: "telo:Ui/MutationPress#/properties/onSuccess" }
+    onFailure: { $ref: "telo:Ui/MutationPress#/properties/onFailure" }
     failure:
       title: Failure
       description: >-
@@ -1520,7 +1559,16 @@ schema:
         # none is drawn.
         create: { $ref: "#/$defs/Press" }
         edit: { $ref: "#/$defs/Press" }
-        delete: { type: boolean }
+        # `false` offers none; otherwise what follows a delete's answer, over `row` and, in `onFailure`, `error`.
+        delete:
+          anyOf:
+            - { const: false }
+            - type: object
+              additionalProperties: false
+              required: [onSuccess, onFailure]
+              properties:
+                onSuccess: { type: array, items: { $ref: "telo:Ui/EffectSpec" } }
+                onFailure: { type: array, items: { $ref: "telo:Ui/EffectSpec" } }
         # What each record offers beyond edit and delete, in order: an
         # operation run with values of the record.
         rowActions: { type: array, items: { $ref: "#/$defs/MutationCall" } }
@@ -1540,7 +1588,7 @@ schema:
         shown: { $ref: "#/$defs/Shown" }
         fill: { type: boolean }
     - additionalProperties: false
-      required: [type, id, schema, record, initialValues, unsaved, afterSubmit, fields, groups, state, onSubmit, autosave, onSuccess, clearAnswerOn, fill]
+      required: [type, id, schema, record, initialValues, unsaved, afterSubmit, fields, groups, state, onSubmit, autosave, onSuccess, onFailure, clearAnswerOn, fill]
       properties:
         type: { const: form }
         # The declaration's identity: the settled record of every placement of
@@ -1572,6 +1620,8 @@ schema:
         autosave: { anyOf: [{ type: "null" }, { $ref: "#/$defs/FormAutosave" }] }
         # Run in order after the submit write succeeds, over `values` and `result`.
         onSuccess: { type: array, items: { $ref: "telo:Ui/EffectSpec" } }
+        # Run in order after the submit write does not succeed, over `values` and `error`.
+        onFailure: { type: array, items: { $ref: "telo:Ui/EffectSpec" } }
         # Properties whose change clears what the writes drew of their last answers.
         clearAnswerOn: { type: array, items: { type: string } }
         style: { $ref: "#/$defs/Style" }
@@ -1989,7 +2039,7 @@ schema:
     MutationCall:
       type: object
       additionalProperties: false
-      required: [mutation, inputs, label, prompt, onSuccess, failure]
+      required: [mutation, inputs, label, prompt, onSuccess, onFailure, failure]
       properties:
         mutation: { $ref: "telo:Ui/MutationSpec" }
         inputs: { type: object, additionalProperties: { $ref: "#/$defs/Binding" } }
@@ -1999,6 +2049,7 @@ schema:
         prompt: { $ref: "#/$defs/Prompt" }
         enabled: { $ref: "#/$defs/Enablement" }
         onSuccess: { type: array, items: { $ref: "telo:Ui/EffectSpec" } }
+        onFailure: { type: array, items: { $ref: "telo:Ui/EffectSpec" } }
         # Present when something is drawn of a success.
         result: { $ref: "#" }
         failure: { $ref: "#" }
@@ -2034,7 +2085,7 @@ schema:
     Move:
       type: object
       additionalProperties: false
-      required: [mutation, inputs, prompt, onSuccess, failure]
+      required: [mutation, inputs, prompt, onSuccess, onFailure, failure]
       properties:
         mutation: { $ref: "telo:Ui/MutationSpec" }
         inputs: { type: object, additionalProperties: { $ref: "#/$defs/Binding" } }
@@ -2042,6 +2093,7 @@ schema:
         prompt: { $ref: "#/$defs/Prompt" }
         enabled: { $ref: "#/$defs/Enablement" }
         onSuccess: { type: array, items: { $ref: "telo:Ui/EffectSpec" } }
+        onFailure: { type: array, items: { $ref: "telo:Ui/EffectSpec" } }
         failure: { $ref: "#" }
     # A condition deciding whether a button can be pressed, and why not.
     Enablement:
@@ -2404,13 +2456,72 @@ schema:
         surface: { $ref: "telo:Ui/SurfaceSpec" }
         keepsSurface: { type: boolean }
 ---
-# What follows a success, as a renderer receives it: one branch per kind of
-# effect, today a destination.
+# What follows an answer, as a renderer receives it: one branch per kind of
+# effect, tagged on `type` — a destination, a toast, or the closing of the
+# surface the call ran in.
 kind: Telo.JsonSchema
 metadata: { name: EffectSpec }
 schema:
   anyOf:
     - { $ref: "telo:Ui/DestinationSpec" }
+    - { $ref: "telo:Ui/ToastSpec" }
+    - { $ref: "telo:Ui/CloseSpec" }
+---
+# A notification, as a renderer receives it, with its `tone` filled by the list
+# that holds it: `link` a press to where it leads, `call` a press that runs a
+# mutation.
+kind: Telo.JsonSchema
+metadata: { name: ToastSpec }
+schema:
+  type: object
+  additionalProperties: false
+  required: [type, text, tone]
+  properties:
+    type: { const: toast }
+    text: { $ref: "telo:Ui/SpecNode#/$defs/NodeText" }
+    tone: { enum: [info, success, warning, danger] }
+    link: { $ref: "telo:Ui/PressSpec" }
+    call: { $ref: "telo:Ui/MutationPressSpec" }
+---
+# What a `Ui.Toast` provides before the list holding it fills its `tone`:
+# `ToastSpec` with the tone optional.
+kind: Telo.JsonSchema
+metadata: { name: ToastDraft }
+schema:
+  type: object
+  additionalProperties: false
+  required: [type, text]
+  properties:
+    type: { const: toast }
+    text: { $ref: "telo:Ui/SpecNode#/$defs/NodeText" }
+    tone: { enum: [info, success, warning, danger] }
+    link: { $ref: "telo:Ui/PressSpec" }
+    call: { $ref: "telo:Ui/MutationPressSpec" }
+---
+# The closing of the surface a call ran in, as a renderer receives it.
+kind: Telo.JsonSchema
+metadata: { name: CloseSpec }
+schema:
+  type: object
+  additionalProperties: false
+  required: [type]
+  properties: { type: { const: close } }
+---
+# A mutation run by a press, as a renderer receives it, every member present:
+# the write, what it is sent, the button's name and the effects that follow an
+# answer, `[]` when none.
+kind: Telo.JsonSchema
+metadata: { name: MutationPressSpec }
+schema:
+  type: object
+  additionalProperties: false
+  required: [mutation, inputs, label, onSuccess, onFailure]
+  properties:
+    mutation: { $ref: "telo:Ui/MutationSpec" }
+    inputs: { type: object, additionalProperties: { $ref: "telo:Ui/SpecNode#/$defs/Binding" } }
+    label: { $ref: "telo:Ui/SpecNode#/$defs/NodeText" }
+    onSuccess: { type: array, items: { $ref: "telo:Ui/EffectSpec" } }
+    onFailure: { type: array, items: { $ref: "telo:Ui/EffectSpec" } }
 ---
 # What a call asks before it runs, as a renderer receives it: `schema` the
 # shape of the entries, `fields` and `groups` what enters them.
@@ -3614,10 +3725,11 @@ kind: Telo.Abstract
 metadata:
   name: Effect
   description: >-
-    What happens once a write succeeds, after what it draws: go to another
-    address or open a page over the current one. Effects run in the order
-    written, each after the one before has happened, and still run when the
-    surface that made the call has closed.
+    What happens once a write answers, after what it draws: go to another
+    address, open a page over the current one, close the surface the call ran
+    in, or post a notification. Effects run in the order written, each after
+    the one before has happened, and still run when the surface that made the
+    call has closed.
 capability: Telo.Provider
 outputType: !ref EffectSpec
 ---
@@ -3645,6 +3757,79 @@ schema:
       values: { x-telo-context-eval: accessor, x-telo-context-from-referrer: values, x-telo-context-withheld: a destination reads only the roots bound where it is written }
       result: { x-telo-context-eval: accessor, x-telo-context-from-referrer: result, x-telo-context-withheld: a destination reads only the roots bound where it is written }
       input: { x-telo-context-eval: accessor, x-telo-context-from-referrer: input, x-telo-context-withheld: a destination reads only the roots bound where it is written }
+---
+kind: Telo.Definition
+metadata:
+  name: Toast
+  description: >-
+    Posts a short notification once a write answers, reporting an event — saved,
+    archived, deleted, failed — in the page's notification region. It may offer
+    a link to where the event led and one button that runs a write, such as
+    undo or retry. Its text is announced as one sentence; the toast is never
+    the only record of an outcome, nor the only way to act on it.
+capability: Telo.Provider
+extends: Self.Effect
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ToastController]
+outputType: !ref ToastDraft
+schema:
+  type: object
+  additionalProperties: false
+  required: [text]
+  x-telo-context:
+    type: object
+    properties:
+      row: { x-telo-context-eval: accessor, x-telo-context-from-referrer: row, x-telo-context-withheld: a toast reads only the roots bound where it is written }
+      data: { x-telo-context-eval: accessor, x-telo-context-from-referrer: data, x-telo-context-withheld: a toast reads only the roots bound where it is written }
+      query: { x-telo-context-eval: accessor, x-telo-context-from-referrer: query, x-telo-context-withheld: a toast reads only the roots bound where it is written }
+      params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, x-telo-context-withheld: a toast reads only the roots bound where it is written }
+      values: { x-telo-context-eval: accessor, x-telo-context-from-referrer: values, x-telo-context-withheld: a toast reads only the roots bound where it is written }
+      result: { x-telo-context-eval: accessor, x-telo-context-from-referrer: result, x-telo-context-withheld: a toast reads only the roots bound where it is written }
+      input: { x-telo-context-eval: accessor, x-telo-context-from-referrer: input, x-telo-context-withheld: a toast reads only the roots bound where it is written }
+      error: { x-telo-context-eval: accessor, x-telo-context-from-referrer: error, x-telo-context-withheld: a toast reads only the roots bound where it is written }
+  properties:
+    text:
+      title: Text
+      description: >-
+        What the toast says, one sentence, its values read from the roots of
+        the list holding the toast when it is posted.
+      $ref: "telo://Self/BoundText"
+    tone:
+      title: Tone
+      description: >-
+        How it is announced and how long it stays. Omitted, `success` in an
+        `onSuccess` list and `danger` in an `onFailure` list.
+      enum: [info, success, warning, danger]
+    link:
+      title: Link
+      description: A press to where the event led, drawn as a link in the toast.
+      $ref: "telo://Self/Press"
+    call:
+      title: Call
+      description: >-
+        A button that runs a write — undo, retry — named by its `label`. Its
+        `onSuccess` and `onFailure` read its own `result`, `error` and `input`;
+        omitted, a failure posts one `danger` toast with the error's message.
+      type: object
+      additionalProperties: false
+      required: [mutation, inputs, label]
+      properties:
+        mutation: { $ref: "telo://Self/MutationPress#/properties/mutation" }
+        inputs: { $ref: "telo://Self/MutationPress#/properties/inputs" }
+        label: { $ref: "telo://Self/MutationPress#/properties/label" }
+        onSuccess: { $ref: "telo://Self/MutationPress#/properties/onSuccess" }
+        onFailure: { $ref: "telo://Self/MutationPress#/properties/onFailure" }
+---
+kind: Telo.Definition
+metadata:
+  name: Close
+  description: >-
+    Closes the dialog, drawer, popover or other surface the write was pressed
+    in, if it is still open. Has no address, so it is never a link target.
+capability: Telo.Provider
+extends: Self.Effect
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#CloseController]
+outputType: !ref CloseSpec
+schema: { type: object, additionalProperties: false }
 ---
 kind: Telo.Definition
 metadata:
@@ -5112,9 +5297,40 @@ schema:
           params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
     delete:
       title: Delete
-      description: Whether each record offers a confirmed delete.
-      type: boolean
+      description: >-
+        Whether each record offers a confirmed delete: `true`, or the effects
+        run once it answers. A failed delete keeps its confirmation open with
+        the failure drawn in it.
       default: false
+      anyOf:
+        - { type: boolean }
+        - type: object
+          additionalProperties: false
+          properties:
+            onSuccess:
+              title: On success
+              description: Effects run in order once the delete succeeds, over `row`, `query` and `params`.
+              type: array
+              items: { x-telo-ref: { kind: Self.Effect, use: dependency } }
+              x-telo-context:
+                type: object
+                properties:
+                  row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
+                  query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
+                  params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
+                  error: { x-telo-context-eval: accessor, x-telo-context-withheld: a success has no error. }
+            onFailure:
+              title: On failure
+              description: Effects run in order when the delete does not succeed, over `row`, `error`, `query` and `params`.
+              type: array
+              items: { x-telo-ref: { kind: Self.Effect, use: dependency } }
+              x-telo-context:
+                type: object
+                properties:
+                  row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
+                  query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
+                  params: { x-telo-context-eval: accessor, x-telo-context-from-referrer: params, type: object, additionalProperties: { type: string } }
+                  error: { x-telo-context-eval: accessor, $ref: "telo://Self/RequestError" }
     rowActions:
       title: Row actions
       description: >-
@@ -6041,7 +6257,7 @@ schema:
     - { not: { required: [record, onSubmit] } }
     - { not: { required: [record, autosave] } }
     - if: { not: { anyOf: [{ required: [record] }, { required: [onSubmit] }] } }
-      then: { not: { anyOf: [{ required: [onSuccess] }, { required: [afterSubmit] }] } }
+      then: { not: { anyOf: [{ required: [onSuccess] }, { required: [onFailure] }, { required: [afterSubmit] }] } }
   properties:
     model:
       title: Model
@@ -6275,6 +6491,21 @@ schema:
             type: object
             properties: {}
             additionalProperties: false
+          error: { x-telo-context-eval: accessor, x-telo-context-withheld: a success has no error. }
+    onFailure:
+      title: On failure
+      description: >-
+        Effects run in order when the submit write does not succeed, after its
+        `failure` is drawn, over `values` and `error`. Needs `record` or
+        `onSubmit`; an autosave write runs none.
+      type: array
+      items: { x-telo-ref: { kind: Self.Effect, use: dependency } }
+      x-telo-context:
+        type: object
+        properties:
+          values: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
+          error: { x-telo-context-eval: accessor, $ref: "telo://Self/RequestError" }
+          result: { x-telo-context-eval: accessor, x-telo-context-withheld: a failure has no result. }
     clearAnswerOn:
       title: Clear answer on
       description: Properties whose change clears what the writes drew of their last answers. A new write always clears them.
@@ -7602,6 +7833,9 @@ keys:
     description: Names the site's navigation for assistive technology.
   collapseNavigation: Collapse navigation
   expandNavigation: Expand navigation
+  toaster:
+    message: Notifications
+    description: Names the region holding the notifications, for assistive technology.
   search:
     message: Search {$label}
     values: { label: { type: string } }

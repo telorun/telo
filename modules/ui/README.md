@@ -93,8 +93,9 @@ turns what it produces into a web application.
 - **An operation's answer is drawn as content.** A call draws a success as its
   `result` tree and anything else as its `failure` tree where it ran, then
   reads again the queries and listings the mutation invalidated and runs its
-  `onSuccess` effects in order — to another page, or opening one over the
-  current page.
+  `onSuccess` effects in order — to another page, opening one over the
+  current page, closing the surface, or posting a toast — and, when it fails,
+  its `onFailure` effects.
 - **A preview follows its inputs; a draft saves itself.** A query or listing
   names a `Ui.Form` placed anywhere on the page and reads the form's settled,
   valid record as `form`; a form's `autosave` sends a replacing write as the
@@ -147,7 +148,8 @@ turns what it produces into a web application.
 | [`Ui.Form`](docs/form.md) | A form over a data model: a collection's record editor, a form running a mutation on submit or as its values settle, or a free-standing one whose values queries and listings follow. |
 | [`Ui.Mutation`](docs/mutation.md) | A write declared once — the record it takes, the request, the reads it invalidates, parallel or serial calls — and run from a row, a `button`, an annotation, a layout's move or a form. |
 | [`Ui.Prompt`](docs/mutation.md#asking-first) | The dialog a call opens to ask for entries before its write runs, read by the call's inputs as `prompt`. |
-| [`Ui.Effect`](docs/presses.md#effects) | The contract of what happens after a write succeeds; `Ui.Destination` is one. |
+| [`Ui.Effect`](docs/presses.md#effects) | The contract of what happens once a write answers; `Ui.Destination`, `Ui.Toast` and `Ui.Close` are effects. |
+| [`Ui.Toast`, `Ui.Close`](docs/toasts.md) | A notification posted once a write answers — with a link and an Undo or Retry button, announced and translated — and the closing of the surface the write was pressed in. |
 | [`Ui.InputField`, `Ui.ChoiceField`, `Ui.PickerField`, `Ui.DateRangeField`](docs/field-kinds.md) | A form's or a prompt's fields: a named control, a choice or a picker over options read from an API, a date range with presets. |
 | [`Ui.Field`](docs/field-kinds.md#uifield) | The contract every field kind answers through, judging its own fit to the model it is placed in. |
 | [`Ui.CollectionOptions`](docs/field-kinds.md#option-sources) | A field's options, read, searched and labelled through the collection contract. |

@@ -1,7 +1,7 @@
 import { durationMs, RuntimeError, type ResourceContext, type ResourceInstance, type RuntimeResource } from "@telorun/sdk";
 import { mergeAssets, type AssetFile, type Provided, type SpecNode } from "./composite.js";
 import { presentationAt } from "./collection-presentation.js";
-import { effectAt, type EffectSpec } from "./effect.js";
+import { effectsAt } from "./effect.js";
 import { enteredFields, type GroupConfig } from "./entered-fields.js";
 import { modelSchema } from "./model-schema.js";
 import { formWrite, type FormWriteConfig } from "./mutation-calls.js";
@@ -27,6 +27,7 @@ type FormResource = RuntimeResource & {
   onSubmit?: FormWriteConfig | null;
   autosave?: FormWriteConfig | null;
   onSuccess?: unknown[] | null;
+  onFailure?: unknown[] | null;
   clearAnswerOn?: string[] | null;
 };
 
@@ -95,10 +96,8 @@ class Form implements ResourceInstance {
         failure: write.failure,
       };
     }
-    const onSuccess: EffectSpec[] = [];
-    for (const [index, effect] of (this.resource.onSuccess ?? []).entries()) {
-      onSuccess.push(await effectAt(effect, this.ctx, () => `'onSuccess[${index}]' of ${owner}`));
-    }
+    const onSuccess = await effectsAt(this.resource.onSuccess, "success", this.ctx, owner, "onSuccess");
+    const onFailure = await effectsAt(this.resource.onFailure, "danger", this.ctx, owner, "onFailure");
     const node: SpecNode = {
       type: "form",
       id: queryId(this.resource.metadata as Parameters<typeof queryId>[0]),
@@ -113,6 +112,7 @@ class Form implements ResourceInstance {
       onSubmit: submitting,
       autosave: saving,
       onSuccess,
+      onFailure,
       clearAnswerOn: this.resource.clearAnswerOn ?? [],
     };
     return filledProvided({ node, assets: mergeAssets(...assets) });

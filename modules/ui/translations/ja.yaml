@@ -35,6 +35,7 @@ messages:
   siteNavigation: サイト
   collapseNavigation: ナビゲーションを折りたたむ
   expandNavigation: ナビゲーションを展開
+  toaster: 通知
   search: "{$label}を検索"
   remove: "{$label}を削除"
   clear: "{$label}をクリア"

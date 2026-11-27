@@ -73,6 +73,8 @@ export type Step =
   | { press: Target; pointer?: "mouse" | "touch" }
   /** A mouse pointer moved onto the target. */
   | { hover: Target }
+  /** A mouse pointer moved off the target, out of the page. */
+  | { leave: Target }
   | { key: string; on?: Target; shift?: boolean }
   | { fill: Target; value: string }
   | { focus: Target }
@@ -347,6 +349,18 @@ function hover(view: View, element: HTMLElement): void {
   for (const type of ["pointermove", "mousemove"]) pointer(view, type, element, "mouse");
 }
 
+/** A mouse pointer leaving the element and everything holding it, out of the page. */
+function leave(view: View, element: HTMLElement): void {
+  for (const type of ["pointerout", "mouseout"]) pointer(view, type, element, "mouse");
+  for (let at: Element | null = element; at; at = at.parentElement) {
+    for (const type of ["pointerleave", "mouseleave"]) {
+      const event = new view.MouseEvent(type, { bubbles: false, composed: true });
+      Object.defineProperty(event, "pointerType", { value: "mouse" });
+      at.dispatchEvent(event);
+    }
+  }
+}
+
 function click(view: View, element: HTMLElement): void {
   const kept = pointer(view, "pointerdown", element, "mouse");
   const focusable = element.closest<HTMLElement>(TABBABLE);
@@ -456,6 +470,7 @@ async function perform(step: Step, session: Session): Promise<void> {
   if ("click" in step) click(view, resolve(step.click, session));
   else if ("press" in step) pointer(view, "pointerdown", resolve(step.press, session), step.pointer ?? "mouse");
   else if ("hover" in step) hover(view, resolve(step.hover, session));
+  else if ("leave" in step) leave(view, resolve(step.leave, session));
   else if ("key" in step) key(view, step.key, step.on ? resolve(step.on, session) : (view.document.activeElement ?? view.document.body), step.shift === true);
   else if ("fill" in step) fill(view, resolve(step.fill, session), step.value);
   else if ("focus" in step) resolve(step.focus, session).focus();
