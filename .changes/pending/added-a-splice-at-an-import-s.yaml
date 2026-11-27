@@ -1,6 +1,0 @@
-units:
-  analyzer: Added
-body: "A '...' splice at an import's own top level — an imports: entry, a top-level
-  Telo.Import or a scope member — is refused at load as REPEAT_OUTSIDE_TEMPLATE in the
-  import's wording, since it may write the alias or source the loader reads first;
-  nothing beneath it is judged."

@@ -1,5 +1,0 @@
-units:
-  apps/authoring-agent: Added
-body: The agent's primer has every application serving HTTP declare a `Telo.PublicUrl`
-  need for its own address, and build every URL it hands out to itself — links, OAuth
-  redirect URIs, a webhook endpoint printed for the user to register — from that need.

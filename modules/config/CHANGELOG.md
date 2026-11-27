@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.0 - 2026-11-27
+### Added
+* A schema an environment variable store or an Env entry declares is typed as JSON Schema, so a pattern RE2 cannot read is refused by telo check and at load, at the pattern. Breaking: such a pattern is now refused before the app runs.
+
 ## 0.10.2 - 2026-11-08
 ### Fixed
 * Documentation links now point at telo.run pages and hub module pages instead of the repository tree.

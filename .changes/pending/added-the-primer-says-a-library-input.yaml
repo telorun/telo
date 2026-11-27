@@ -1,5 +1,0 @@
-units:
-  apps/authoring-agent: Added
-body: The primer says a library input typed `Text` is written by the importer in its own
-  `lang:` and read by the library as the importer's `TextRecord`, forwarded on with
-  `!cel "variables.<name>"`.

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.141.0 - 2026-11-27
+### Added
+* A JSON Schema pattern is RE2: `schemaPattern` is the one seam every validator reads a schema's `pattern`, `patternProperties` keys and `format: regex` through — an unanchored RE2 search, the `u` flag accepted, any other flag refused, a refusal worded `invalid RE2 pattern "<pattern>": <kind>` carrying where the schema holds it — and `SCHEMA_REGEX_FORMAT` is `format: regex` as its verdict. Breaking: a pattern RE2 cannot read (lookaround, a backreference, an ECMAScript-only escape) is refused, and `.`, `\s`, `\S` and `\p{…}` match as RE2 matches them. `opaqueSchemaView` presents bytes, an instant, a duration and a host's typed value to a schema as an object with no members, equal to an equal value.
+* Every schema refusal raised as ERR_INPUT_INVALID or ERR_OUTPUT_INVALID carries data: { issues } — a bound contract's in either direction, a module function's arguments or result, and an error's data its kind does not declare — one finding per refusal with its pointer, keyword (required, format, or invalid) and params, never quoting the value, and the built-in entries of the two codes declare that data as null or an object holding issues. Breaking: a contract refusal's data was absent and is now { issues }, a module function's refusal data gains issues beside function, and an undeclared-data refusal's issues are findings rather than sentences.
+* telorun-sdk-core no longer depends on the jsonschema crate, its tests included: the controller protocol's message schemas are judged against their vectors by the Rust analyzer's validator twin.
+* The built-in `Telo.Library` and `Telo.Application` entries declare each `variables:` / `secrets:` entry as a JSON Schema position (`$ref: JsonSchema7`).
+
 ## 0.140.0 - 2026-11-24
 ### Fixed
 * The native controller backend now refuses a null instance handle, a null buffer with a length, or a missing host table with an error, where it used to dereference them.

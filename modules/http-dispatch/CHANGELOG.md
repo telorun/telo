@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.21.0 - 2026-11-27
+### Added
+* The request matcher's `schema.params`, `query`, `body`, `headers` and `cookies`, and a return or catch entry's `content.<type>.schema`, are typed as JSON Schema (`telo://manifest#/$defs/JsonSchema7`) instead of any object. Breaking: a value there that is not JSON Schema, or a pattern RE2 cannot read, is refused by `telo check` and at load as `DEPENDENT_SCHEMA_MISMATCH`; a boolean schema is admitted. This version requires the telo release that compiles those schemas, since an older one would check no route's method, status or schemas.
+
 ## 0.20.0 - 2026-11-22
 ### Added
 * The shared request matcher accepts QUERY as a method, taking a body like POST; a transport that cannot carry it narrows method in its own schema.

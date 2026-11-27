@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.47.0 - 2026-11-27
+### Added
+* The request validator reads a route schema's `pattern`, `patternProperties` keys and `format: regex` as RE2, through the same seam as every Telo validator, and a route's request and response schemas are judged before the app runs: a pattern RE2 cannot read (a lookahead, a backreference) is refused by `telo check` at the pattern, and the load is refused with it. Breaking: such a route no longer starts, and `.`, `\s` and `\S` in a request pattern match as RE2 matches them.
+
 ## 0.46.0 - 2026-11-24
 ### Added
 * Http.Server parses every request body whose media type has the +json suffix (application/merge-patch+json, application/problem+json, a vendor type, under any top-level type, parameters ignored) exactly as application/json: same charset handling, maxBodyBytes accounting, 400 for malformed JSON and validation against the route body schema. A contentTypeParsers entry naming one exact +json type replaces the built-in parse for that type; a stream body for a +json type still needs a { contentType, stream: true } entry. Before, such a body was refused with 415.

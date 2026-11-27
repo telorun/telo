@@ -1,4 +1,0 @@
-units:
-  apps/authoring-agent: Added
-body: The primer says an import's inputs may be chosen with `!if` / `!switch`, while its
-  alias, kind, source and integrity are refused at load behind a tag.

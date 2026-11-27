@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.30.0 - 2026-11-27
+### Fixed
+* The chart installs and upgrades under Flux again with shares.enabled: the relay pod template no longer repeats the app.kubernetes.io/name label, which Flux's post-render refused as a duplicate mapping key, failing the whole upgrade.
+### Security
+* An application's kernel debug stream, whose event payloads can include secrets, is no longer reachable from the session's network: telo run --inspect binds 127.0.0.1 inside the workload, and the runner reads the stream through the session supervisor's authenticated port forward, so a run no longer opens with the '[inspect] binding 0.0.0.0' warning while its debug events still arrive. A session's containers left by an earlier runner build speak the previous supervisor generation and are recreated when the runner adopts the session.
+
 ## 0.29.0 - 2026-11-24
 ### Security
 * The image carries npm 11's latest release, whose bundled undici and brace-expansion are fixed.

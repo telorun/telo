@@ -1,8 +1,0 @@
-units:
-  analyzer: Added
-body: "Every reader of an import's inputs reads them option by option: a reference to an
-  optional resource input an option leaves out, the data check of a resources: supply, a
-  cycle through one option's input and a library's own import whose needs: holds a
-  choice — decided through what the importer binds the library's input to — are each
-  reported labelled with the options that hold them. telo needs report lists a need an
-  option leaves unsupplied, required when that option is taken."

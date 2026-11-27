@@ -1,6 +1,0 @@
-units:
-  kernel: Fixed
-body: "An import supplying a library input whose entry types a member through a
-  reference into its own `$defs` (`$ref: \"#/$defs/A\"`) boots: each entry is validated
-  as its own schema root, where it used to fail with `can't resolve reference
-  #/$defs/A`."

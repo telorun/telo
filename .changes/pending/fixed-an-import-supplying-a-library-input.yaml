@@ -1,4 +1,0 @@
-units:
-  kernel: Fixed
-body: An import supplying a library input typed by a recursive built-in fragment
-  (`Text`) no longer fails with an unresolved `#/$defs/telo:Message` reference.

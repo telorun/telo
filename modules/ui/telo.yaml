@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: Ui
-  version: 0.16.0
+  version: 0.17.0
   repository: https://github.com/telorun/telo
   license: MIT
   categories: [UI]
@@ -14,14 +14,14 @@ metadata:
     back-office screen without frontend code.
 requires:
   # Measured by `telo release floor`: no published telo reads this file.
-  telo: ">=unreleased"
+  telo: ">=0.141.0"
 restrictions:
   - requires: { telo: ">=0.139.0" }
     reason: >-
       Ui.Query.input.body is an accessor-template field, and a query node types
       its `query` root through the reference to its query; earlier runtimes
       neither type nor deliver them.
-  - requires: { telo: ">=unreleased" }
+  - requires: { telo: ">=0.141.0" }
     reason: a page path naming a variable twice is refused only by a telo that checks the path-template format
 lang: en
 # The conformance rows a renderer's tests read: the interpreted profile's,
